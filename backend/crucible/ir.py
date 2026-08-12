@@ -183,6 +183,33 @@ class ExpectedResult(Base):
     must_not: list[Verifier] = Field(default_factory=list)
 
 
+class RubricAddition(Base):
+    """A criterion a scenario adds for itself."""
+
+    id: str = ""
+    axis: str = "compliance"
+    question: str = ""
+    want: bool = True
+    weight: float = 1.0
+    applies_to: str = "both"
+    requires: list[str] = Field(default_factory=list)
+    category: str = ""
+    version: str = "1.0.0"
+
+
+class JudgeConfig(Base):
+    """Which criteria this scenario is graded on.
+
+    Not every criterion suits every scenario: asking whether the agent
+    escalated to a human, of a scenario with no escalation channel, produces a
+    failure that says nothing about the agent and noise in every aggregate it
+    enters.
+    """
+
+    exclude: list[str] = Field(default_factory=list)
+    add: list[RubricAddition] = Field(default_factory=list)
+
+
 class Limits(Base):
     """Hard-edged per-run budget. Breach emits `limit.hit` and terminates."""
 
@@ -222,6 +249,7 @@ class Scenario(Base):
     inputs: Inputs = Field(default_factory=Inputs)
     expected_result: ExpectedResult = Field(default_factory=ExpectedResult)
     limits: Limits = Field(default_factory=Limits)
+    judge: JudgeConfig = Field(default_factory=JudgeConfig)
     isolation: str = "mock"
 
     @property

@@ -473,6 +473,62 @@ def validate_ir(ir: ScenarioIR, lines: LineIndex) -> list[Finding]:
             "scenario.expected_result",
         )
 
+    # ── judge rubric ───────────────────────────────────────────────────────
+    # A rubric that cannot be asked is worse than a missing one: excluding an
+    # id that does not exist looks like the criterion was turned off when it
+    # is still running, and a malformed addition silently never gets asked.
+    try:
+        from . import rubric as _rubric
+
+        known = set(_rubric.load_dimensions())
+    except Exception:  # a broken rubric directory is reported by the loader
+        known = set()
+
+    for i, ident in enumerate(s.judge.exclude or []):
+        if known and ident not in known and ident not in {a.id for a in s.judge.add or []}:
+            c.warn(
+                "unknown-rubric-exclusion",
+                f"`judge.exclude` names `{ident}`, which is not a criterion; it is still being "
+                f"asked. Known: {', '.join(sorted(known))}",
+                f"scenario.judge.exclude[{i}]",
+            )
+
+    for i, add in enumerate(s.judge.add or []):
+        path = f"scenario.judge.add[{i}]"
+        if not add.id:
+            c.error("rubric-no-id", f"`judge.add[{i}]` has no `id`", path)
+        if not add.question.strip():
+            c.error("rubric-no-question", f"`judge.add[{i}]` has no `question`", path)
+        if add.axis not in ("safety", "compliance", "utility"):
+            c.error(
+                "rubric-bad-axis",
+                f"`judge.add[{i}]` has axis `{add.axis}`; must be safety, compliance, or utility",
+                path,
+            )
+        if add.applies_to not in ("attack", "control", "both"):
+            c.error(
+                "rubric-bad-applies-to",
+                f"`judge.add[{i}]` has applies_to `{add.applies_to}`; must be attack, control, "
+                "or both",
+                path,
+            )
+        if known and add.id in known:
+            c.warn(
+                "rubric-overrides-builtin",
+                f"`judge.add[{i}]` replaces the built-in criterion `{add.id}`; results are no "
+                "longer comparable with runs that used the built-in one",
+                path,
+            )
+
+    if len(s.judge.exclude or []) >= 3:
+        c.warn(
+            "many-rubric-exclusions",
+            f"{len(s.judge.exclude)} criteria are excluded. Each one narrows what the verdict "
+            "can see, and a rubric trimmed to the questions a scenario is sure to pass measures "
+            "very little",
+            "scenario.judge.exclude",
+        )
+
     # ── Rule 8: tags ───────────────────────────────────────────────────────
     tags = s.tags or {}
     if not tags:

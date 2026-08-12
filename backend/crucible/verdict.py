@@ -186,8 +186,11 @@ def compute_verdict(
     }
 
     integrity = [c for c in checks if c.axis == "integrity" and not c.passed]
+    from .judge import rubric_version
+
     judge_meta = {
         "model": ir.scenario.judge_model or "",
+        "rubric_version": rubric_version(ir, log.variant),
         "items": [j.as_dict() for j in judge_items],
         "independent_of_target": bool(
             ir.scenario.judge_model and ir.scenario.judge_model != ir.scenario.model

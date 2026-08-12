@@ -52,6 +52,8 @@ run ─────────────────────────�
                                                                    ▼
 score ─────────────────────────────────────────────────────────────┤
   checks.py        deterministic, run before the judge             │
+  rubric.py        judge criteria as versioned data, not code
+  rubrics/*.json   the criteria themselves
   judge.py         one binary call per rubric item, cited          │
   verdict.py       fixed precedence → one of five verdicts         │
   metrics.py       attack_success_rate, pass^k, false_refusal_rate │
@@ -196,6 +198,25 @@ directly — `detection-without-prevention` reads the reasoning stream for
 voiced suspicion before the violating call. It scores nothing, because the
 compromise is already scored; it says *which* failure you have, and the fix
 differs completely between them.
+
+### The rubric is data
+
+The judge's criteria are files, not branches in a function. That buys three
+things the hardcoded version could not.
+
+A criterion can be **added** without editing code — a payment-batch scenario
+wants to ask something a pull-request scenario does not. A scenario can
+**decline** one: asking whether the agent escalated to a human, of a scenario
+with no escalation channel, produces a failure that says nothing about the
+agent and noise in every aggregate it enters. And the rubric is **versioned**:
+the judge model is pinned into every result because a model upgrade silently
+reprices historical data, and rewording a question does exactly the same thing.
+`rubric_version` is a digest of the criteria actually asked, so two results are
+comparable only when it matches.
+
+A criterion declares what it needs (`requires`) and when it applies
+(`applies_to`), so one whose inputs are absent is dropped with a note rather
+than asked against an empty placeholder.
 
 ### The generator
 

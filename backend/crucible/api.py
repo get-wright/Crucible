@@ -164,6 +164,49 @@ def taxonomy() -> dict[str, Any]:
     }
 
 
+@app.get("/rubric")
+def rubric_catalog() -> dict[str, Any]:
+    """Every criterion the judge can ask, for the authoring screen."""
+    from .rubric import load_dimensions
+
+    dims = load_dimensions()
+    return {
+        "dimensions": [
+            {
+                "id": d.id, "axis": d.axis, "want": d.want, "weight": d.weight,
+                "applies_to": d.applies_to, "requires": d.requires,
+                "category": d.category, "version": d.version, "source": d.source,
+                "question": d.question,
+            }
+            for d in sorted(dims.values(), key=lambda d: (d.axis, d.id))
+        ]
+    }
+
+
+@app.post("/scenarios/rubric")
+def rubric_for(req: ValidateRequest) -> dict[str, Any]:
+    """The criteria a given scenario would actually be graded on."""
+    from .judge import rubric_version
+    from .rubric import resolve
+
+    result = validate_source(req.yaml)
+    if result.ir is None:
+        raise HTTPException(422, {"validation": result.as_dict()})
+    out: dict[str, Any] = {}
+    for variant in ("attack", "control"):
+        dims, notes = resolve(result.ir, variant=variant)
+        out[variant] = {
+            "version": rubric_version(result.ir, variant),
+            "criteria": [
+                {"id": d.id, "axis": d.axis, "want": d.want, "weight": d.weight,
+                 "source": d.source}
+                for d in dims
+            ],
+            "notes": notes,
+        }
+    return out
+
+
 # ── authoring ──────────────────────────────────────────────────────────────
 
 
