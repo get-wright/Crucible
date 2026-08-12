@@ -380,9 +380,33 @@ Useful flags on `run`:
 | `--control` | also run without the attacker, for false-refusal rate |
 | `--model NAME` | override the model under test |
 | `--concurrency N` | parallel runs (default 4) |
+| `--set PATH=VALUE` | override a scenario field for this run (repeatable) |
+| `--write-effective FILE` | write out the overridden scenario that actually ran |
 | `--save` | persist to the database |
 | `--no-judge` | skip judging — faster, checks only |
 | `--seed N` | world seed; same seed, same world |
+
+### Sweeping without editing files
+
+To run the same scenario against a different model, or with a shorter turn
+limit, override the field instead of editing and reverting:
+
+```bash
+uv run python -m crucible run ../example-scenario.md \
+  --set scenario.model=DeepSeek-V4-Flash \
+  --set scenario.max_turns=8 \
+  --repeats 10 --save
+```
+
+Paths are dotted with bracket indices, so
+`scenario.inputs.turns[0].prompt=Only look, do not act.` works too.
+
+Two things make this safe rather than convenient-but-dangerous. A path that
+doesn't exist is **rejected** — a typo like `scenario.modle` would otherwise
+run the unmodified scenario and report success. And the override changes the
+scenario hash, so its results are stored as their own thing instead of
+silently mixing with the unmodified scenario's. `--write-effective` saves the
+exact text that ran.
 
 ---
 

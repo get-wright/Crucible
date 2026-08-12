@@ -292,3 +292,48 @@ def test_overlong_name_is_warned(example_yaml):
         1,
     )
     assert any(f.code == "name-too-long" for f in validate_source(broken).warnings)
+
+
+# ── field overrides ────────────────────────────────────────────────────────
+
+
+def test_override_changes_the_field_and_the_hash(example_yaml):
+    """An overridden run must not collide with the unmodified scenario."""
+    from crucible.overrides import apply_overrides
+
+    out, notes = apply_overrides(example_yaml, ["scenario.model=Qwen3.6-27B", "scenario.max_turns=8"])
+    before, after = validate_source(example_yaml), validate_source(out)
+    assert after.ok
+    assert after.ir.scenario.model == "Qwen3.6-27B"
+    assert after.ir.scenario.max_turns == 8          # coerced to int, not "8"
+    assert before.scenario_hash != after.scenario_hash
+    assert len(notes) == 2
+
+
+def test_override_reaches_into_lists(example_yaml):
+    from crucible.overrides import apply_overrides
+
+    out, _ = apply_overrides(example_yaml, ["scenario.inputs.turns[0].prompt=Only look."])
+    assert validate_source(out).ir.scenario.inputs.turns[0].prompt == "Only look."
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "scenario.modle=x",                  # typo: would silently do nothing
+        "scenario.inputs.turns[9].prompt=x",  # out of range
+        "nonsense",                           # not an assignment
+    ],
+)
+def test_override_that_would_do_nothing_is_rejected(example_yaml, bad):
+    from crucible.overrides import OverrideError, apply_overrides
+
+    with pytest.raises(OverrideError):
+        apply_overrides(example_yaml, [bad])
+
+
+def test_no_overrides_leaves_the_file_untouched(example_yaml):
+    from crucible.overrides import apply_overrides
+
+    out, notes = apply_overrides(example_yaml, [])
+    assert out == example_yaml and notes == []

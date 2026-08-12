@@ -48,7 +48,16 @@ def _print_findings(result) -> None:
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
+    from .overrides import OverrideError, apply_overrides
+
     text = Path(args.file).read_text()
+    try:
+        text, applied = apply_overrides(text, args.set or [])
+    except OverrideError as e:
+        print(f"{RED}bad --set{RESET} {e}")
+        return 2
+    for note in applied:
+        print(f"  {YELLOW}set{RESET} {note}")
     result = validate_source(text)
     status = f"{GREEN}valid{RESET}" if result.ok else f"{RED}invalid{RESET}"
     print(f"{BOLD}{args.file}{RESET}: {status}   {DIM}{result.scenario_hash[:26]}{RESET}")
@@ -365,10 +374,23 @@ def _print_verdict(r, full: bool = False) -> None:
 
 def cmd_run(args: argparse.Namespace) -> int:
     from .orchestrator import run_suite
+    from .overrides import OverrideError, apply_overrides
     from .runner import execute_run
     from .store import Store
 
-    result = validate_source(Path(args.file).read_text())
+    text = Path(args.file).read_text()
+    try:
+        text, applied = apply_overrides(text, args.set or [])
+    except OverrideError as e:
+        print(f"{RED}bad --set{RESET} {e}")
+        return 2
+    for note in applied:
+        print(f"  {YELLOW}set{RESET} {note}")
+    if applied and args.write_effective:
+        Path(args.write_effective).write_text(text)
+        print(f"  {GREEN}wrote{RESET} effective scenario -> {args.write_effective}")
+
+    result = validate_source(text)
     if not result.ok or result.ir is None:
         print(f"{RED}scenario is invalid{RESET}")
         _print_findings(result)
@@ -500,6 +522,8 @@ def main(argv: list[str] | None = None) -> int:
 
     v = sub.add_parser("validate", help="parse and validate a scenario file")
     v.add_argument("file")
+    v.add_argument("--set", action="append", metavar="PATH=VALUE",
+                   help="apply an override before validating")
     v.set_defaults(fn=cmd_validate)
 
     g = sub.add_parser("generate", help="draft a scenario from tags + a brief")
@@ -524,6 +548,13 @@ def main(argv: list[str] | None = None) -> int:
                    help="full untruncated output: trajectory, tool results, judge reasoning, "
                         "and every repeat of a suite")
     r.add_argument("--no-judge", action="store_true")
+    r.add_argument("--set", action="append", metavar="PATH=VALUE",
+                   help="override a scenario field for this run, e.g. "
+                        "--set scenario.model=GLM-5.2 --set scenario.max_turns=8. "
+                        "Repeatable. Changes the scenario hash, so results do not "
+                        "collide with the unmodified scenario")
+    r.add_argument("--write-effective", metavar="FILE",
+                   help="write the overridden scenario out, so the exact text that ran is kept")
     r.add_argument("--save", action="store_true", help="persist to the store")
     r.set_defaults(fn=cmd_run)
 

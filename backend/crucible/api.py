@@ -33,6 +33,7 @@ from .config import FPT_MODELS, get_settings
 from .events import Event, read_log
 from .generate import generate_scenario
 from .orchestrator import run_suite
+from .overrides import OverrideError, apply_overrides
 from .store import Store
 from .patterns import catalog as pattern_catalog
 from .taxonomy import VOCABULARIES, ui_schema
@@ -129,6 +130,9 @@ class RunRequest(BaseModel):
     seed: int = 0
     concurrency: int = 4
     judge: bool = True
+    #: `path=value` assignments applied before validation, e.g.
+    #: ["scenario.model=GLM-5.2"]. Changes the scenario hash.
+    overrides: list[str] = Field(default_factory=list)
 
 
 # ── meta ───────────────────────────────────────────────────────────────────
@@ -311,16 +315,20 @@ def delete_scenario(scenario_id: str) -> dict[str, Any]:
 async def start_suite(req: RunRequest, background: BackgroundTasks) -> dict[str, Any]:
     """Queue a suite. Returns immediately; watch it via the stream endpoint."""
     if req.yaml:
-        result = validate_source(req.yaml)
-        scenario_id = ""
+        text, scenario_id = req.yaml, ""
     elif req.scenario_id:
         row = store.get_scenario(req.scenario_id)
         if row is None:
             raise HTTPException(404, "no such scenario")
-        result = validate_source(row["yaml"])
-        scenario_id = req.scenario_id
+        text, scenario_id = row["yaml"], req.scenario_id
     else:
         raise HTTPException(422, "provide either `scenario_id` or `yaml`")
+
+    try:
+        text, _ = apply_overrides(text, req.overrides)
+    except OverrideError as e:
+        raise HTTPException(422, f"bad override: {e}") from e
+    result = validate_source(text)
 
     if not result.ok or result.ir is None:
         raise HTTPException(422, {"validation": result.as_dict()})

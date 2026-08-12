@@ -61,6 +61,7 @@ surface ────────────────────────
   api.py           REST + SSE
   convert.py       import v0.1 files, recovering their pinned world
   patterns.py      attack mechanics that make a scenario discriminate
+  overrides.py     per-run field overrides, applied before validation
   cli.py           validate · generate · convert · run · serve · info
 ```
 
