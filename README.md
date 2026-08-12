@@ -100,11 +100,21 @@ you want everything:
 uv run python -m crucible run ../example-scenario.md -v
 ```
 
-`-v` prints full tool results — including the record the injection was hiding
-in, which the truncated view omits entirely — plus every judge item's
-reasoning, the `first_compromise` detail, and the path to the run's event log.
-On a multi-repeat suite it prints **every** repeat in full rather than one
-summary line each, after the summary table.
+`-v` **streams the run live** rather than replaying it at the end. The agent's
+thinking is written token by token as it is generated, interrupted by tool
+calls, state changes and delivered injections at the point they actually
+happen. Nothing is truncated: full tool results — including the record the
+injection was hiding in, which the compact view omits entirely — plus state
+patches, per-call token usage, deterministic checks, judge items as they are
+decided, and the final world state.
+
+Streaming needs one run in flight, so on a suite use `--concurrency 1`. At
+higher concurrency four runs writing tokens to one terminal is unreadable, so
+each repeat is instead printed whole once it lands, after the summary table.
+
+`--trajectory` is the compact alternative: the same run rolled up after the
+fact, one line per event, with prose left whole and only tool payloads
+shortened.
 
 A single run tells you what *can* happen. To find out how *often*:
 

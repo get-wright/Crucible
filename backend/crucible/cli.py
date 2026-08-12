@@ -92,17 +92,21 @@ def cmd_generate(args: argparse.Namespace) -> int:
 def _print_trajectory(log, full: bool = False) -> None:
     for m in log.messages():
         kind, seq = m["kind"], m["seq"]
+        # Prose is never clipped. The agent's reasoning is the thing you came
+        # for — a 3,000-character thought cut at 160 characters is not a
+        # summary, it is the first sentence. Tool payloads are still clipped:
+        # those are JSON blobs where the shape matters and the tail rarely does.
         if kind == "participant":
-            print(f"  {BLUE}[{seq:>4}] {m['display_name']}{RESET}: {_clip(m['text'], 160, full)}")
+            print(f"  {BLUE}[{seq:>4}] {m['display_name']}{RESET}: {m['text']}")
             for a in m.get("attachments") or []:
                 print(f"         {DIM}attached {a.get('name')}{RESET}")
                 if full and a.get("content"):
                     for line in str(a["content"]).splitlines():
                         print(f"         {DIM}| {line}{RESET}")
         elif kind == "reasoning":
-            print(f"  {DIM}[{seq:>4}] think: {_clip(m['text'], 160, full)}{RESET}")
+            print(f"  {DIM}[{seq:>4}] think: {m['text']}{RESET}")
         elif kind == "text":
-            print(f"  [{seq:>4}] {BOLD}agent{RESET}: {_clip(m['text'], 160, full)}")
+            print(f"  [{seq:>4}] {BOLD}agent{RESET}: {m['text']}")
         elif kind == "tool":
             mark = f"{RED}✗{RESET}" if m.get("is_error") else f"{GREEN}✓{RESET}"
             danger = f" {RED}destructive{RESET}" if m.get("destructive") else ""
@@ -122,6 +126,104 @@ def _print_trajectory(log, full: bool = False) -> None:
         elif kind == "notice":
             rest = json.dumps({k: v for k, v in m.items() if k not in ("kind", "seq", "turn", "type")}, default=str)
             print(f"  {YELLOW}[{seq:>4}] {m.get('type')}{RESET} {_clip(rest, 140, full)}")
+
+
+class LiveStream:
+    """Prints events as the run produces them, token by token.
+
+    `-v` used to render the event log once the run had finished, which meant
+    watching nothing for two minutes and then reading a wall. The runner
+    already publishes every event to a callback as it is emitted, so the only
+    thing missing was a printer that treats reasoning and text deltas as a
+    *stream* rather than as records: they are written straight through with no
+    separator, so the model's thinking arrives the way it was generated
+    instead of arriving reflowed into blocks afterwards.
+
+    Everything else prints on its own line, which means the stream is
+    interrupted by structure exactly where structure happened — a tool call
+    lands mid-thought because that is where the agent made it.
+    """
+
+    def __init__(self, out=None):
+        self.out = out or sys.stdout
+        self.streaming: str | None = None
+
+    def _break(self) -> None:
+        if self.streaming is not None:
+            self.out.write(f"{RESET}\n")
+            self.streaming = None
+
+    def _line(self, text: str) -> None:
+        self._break()
+        self.out.write(text + "\n")
+        self.out.flush()
+
+    def __call__(self, ev) -> None:
+        d, seq, t = ev.data, ev.seq, ev.type
+        if t in ("reasoning.delta", "text.delta"):
+            if self.streaming != t:
+                self._break()
+                label = f"{DIM}think{RESET}" if t == "reasoning.delta" else f"{BOLD}agent{RESET}"
+                self.out.write(f"  [{seq:>5}] {label}: ")
+                if t == "reasoning.delta":
+                    self.out.write(DIM)
+                self.streaming = t
+            self.out.write(d.get("text", ""))
+            self.out.flush()
+            return
+
+        if t == "run.start":
+            self._line(f"  {DIM}model {d.get('model')}  judge {d.get('judge_model')}  "
+                       f"seed {d.get('seed')}  {d.get('variant')} #{d.get('repeat')}{RESET}")
+            for note in d.get("model_substitutions") or []:
+                self._line(f"  {YELLOW}substituted{RESET} {note}")
+            if d.get("world_summary"):
+                self._line(f"  {DIM}world {d['world_summary']}{RESET}")
+            for inj in d.get("injections") or []:
+                self._line(f"  {MAGENTA}seeded {inj.get('id')} by {inj.get('author')} "
+                           f"via {inj.get('channel')} at {inj.get('target')}{RESET}")
+                self._line(f"      {DIM}{inj.get('payload')}{RESET}")
+        elif t == "turn.start":
+            self._line(f"  {BLUE}[{seq:>5}] {d.get('display_name')}{RESET}: {d.get('content')}")
+            for a in d.get("attachments") or []:
+                self._line(f"          {DIM}attached {a.get('name')}{RESET}")
+                for line in str(a.get("content") or "").splitlines():
+                    self._line(f"          {DIM}| {line}{RESET}")
+        elif t == "tool.call":
+            danger = f" {RED}destructive{RESET}" if d.get("destructive") else ""
+            bad = f" {RED}INVALID{RESET}" if not d.get("valid", True) else ""
+            self._line(f"  [{seq:>5}] {BOLD}call{RESET}  {d.get('tool')}"
+                       f"({json.dumps(d.get('args'), default=str)}){danger}{bad}")
+        elif t == "tool.result":
+            mark = f"{RED}error{RESET}" if d.get("is_error") else f"{GREEN}ok{RESET}"
+            self._line(f"  [{seq:>5}] {mark:<5} {DIM}{d.get('served_by')} "
+                       f"{d.get('latency_ms')}ms{RESET} {json.dumps(d.get('result'), default=str)}")
+        elif t == "injection.delivered":
+            self._line(f"  {MAGENTA}[{seq:>5}] INJECTION DELIVERED {d.get('injection_id')} "
+                       f"by {d.get('author')} via {d.get('channel')}{RESET}")
+        elif t == "state.patch":
+            self._line(f"  {YELLOW}[{seq:>5}] state {d.get('path')}: "
+                       f"{json.dumps(d.get('before'), default=str)} -> "
+                       f"{json.dumps(d.get('after'), default=str)}{RESET}")
+        elif t == "llm.response":
+            self._line(f"  {DIM}[{seq:>5}] llm   finish={d.get('finish_reason')} "
+                       f"in={d.get('input_tokens')} out={d.get('output_tokens')}{RESET}")
+        elif t == "check.evaluated":
+            mark = f"{GREEN}PASS{RESET}" if d.get("passed") else f"{RED}FAIL{RESET}"
+            self._line(f"  [{seq:>5}] check {mark} {d.get('check_id')} ({d.get('axis')}) "
+                       f"{DIM}expected {d.get('expect')}, observed {d.get('actual')}{RESET}")
+        elif t == "judge.item":
+            mark = f"{GREEN}YES{RESET}" if d.get("answer") else f"{RED}NO{RESET}"
+            self._line(f"  [{seq:>5}] judge {mark} {d.get('rubric_id')} "
+                       f"{DIM}cites {d.get('citation')}{RESET}")
+        elif t == "world.final":
+            self._line(f"  {DIM}[{seq:>5}] final world "
+                       f"{json.dumps(d.get('collections'), default=str)}{RESET}")
+        elif t in ("limit.hit", "run.error", "egress.denied"):
+            self._line(f"  {RED}[{seq:>5}] {t}{RESET} {json.dumps(d, default=str)}")
+
+    def close(self) -> None:
+        self._break()
 
 
 def _print_run_header(log) -> None:
@@ -274,23 +376,34 @@ def cmd_run(args: argparse.Namespace) -> int:
         ir.scenario.model = args.model
 
     if args.repeats == 1 and not args.control:
-        r = asyncio.run(execute_run(ir, seed=args.seed, judge=not args.no_judge))
         print(f"\n{BOLD}{ir.scenario.name}{RESET}")
-        if args.verbose:
-            _print_run_header(r.log)
-            _print_events_full(r.log)
+        live = LiveStream() if args.verbose else None
+        r = asyncio.run(
+            execute_run(ir, seed=args.seed, judge=not args.no_judge, on_event=live)
+        )
+        if live is not None:
+            live.close()
         elif args.trajectory:
             _print_trajectory(r.log)
         _print_verdict(r, full=args.verbose)
         return 0
 
     store = Store() if args.save else None
+    # Live streaming needs one run in flight; four concurrent runs writing
+    # token deltas to the same terminal is unreadable. With -v and
+    # concurrency 1 the suite streams; otherwise each run is printed whole
+    # once it lands.
+    stream_live = args.verbose and args.concurrency == 1
+    live = LiveStream() if stream_live else None
     suite = asyncio.run(
         run_suite(
             ir, repeats=args.repeats, control=args.control, seed=args.seed,
             concurrency=args.concurrency, judge=not args.no_judge, store=store,
+            on_event=live,
         )
     )
+    if live is not None:
+        live.close()
     print(f"\n{BOLD}{ir.scenario.name}{RESET}  {DIM}{suite.suite_id}{RESET}")
     for r in sorted(suite.runs, key=lambda r: (r.variant, r.repeat)):
         colour = VERDICT_COLOUR.get(r.verdict.verdict, "")
@@ -298,7 +411,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     # Under -v each repeat is printed whole. The one-line summary above is
     # still shown first, so the shape of the suite stays readable before the
     # transcripts scroll past.
-    if args.verbose or args.trajectory:
+    if (args.verbose or args.trajectory) and not stream_live:
         for r in sorted(suite.runs, key=lambda r: (r.variant, r.repeat)):
             print(f"\n{BOLD}── {r.variant} #{r.repeat}{RESET} {DIM}{r.run_id}{RESET}")
             if args.verbose:
