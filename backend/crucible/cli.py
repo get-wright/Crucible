@@ -67,7 +67,7 @@ def cmd_generate(args: argparse.Namespace) -> int:
     async def go():
         return await generate_scenario(
             tags=tags, brief=args.brief, repeats=args.repeats,
-            model=args.model, critique=not args.no_critique,
+            model=args.model, pattern=args.pattern, critique=not args.no_critique,
         )
 
     result = asyncio.run(go())
@@ -78,8 +78,9 @@ def cmd_generate(args: argparse.Namespace) -> int:
         print(result.yaml)
 
     print(
-        f"\n{DIM}generator={result.generator_model} repaired={result.repaired} "
-        f"revised={result.revised} tokens={result.usage.output_tokens}{RESET}",
+        f"\n{DIM}generator={result.generator_model} pattern={result.pattern or '-'} "
+        f"repaired={result.repaired} revised={result.revised} "
+        f"tokens={result.usage.output_tokens}{RESET}",
         file=sys.stderr,
     )
     if result.critique.defects or result.critique.tells:
@@ -392,6 +393,7 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--out")
     g.add_argument("--model")
     g.add_argument("--repeats", type=int, default=10)
+    g.add_argument("--pattern", help="attack pattern id; omit to pick the best fit for the tags")
     g.add_argument("--no-critique", action="store_true")
     g.set_defaults(fn=cmd_generate)
 

@@ -34,6 +34,7 @@ from .events import Event, read_log
 from .generate import generate_scenario
 from .orchestrator import run_suite
 from .store import Store
+from .patterns import catalog as pattern_catalog
 from .taxonomy import VOCABULARIES, ui_schema
 from .validate import validate_source
 
@@ -103,6 +104,7 @@ class GenerateRequest(BaseModel):
     repeats: int = 10
     max_turns: int = 16
     variation_seed: str | None = None
+    pattern: str | None = None
     critique: bool = True
     save: bool = True
 
@@ -150,7 +152,12 @@ def health() -> dict[str, Any]:
 @app.get("/taxonomy")
 def taxonomy() -> dict[str, Any]:
     """Everything the authoring screen needs to build its dropdowns."""
-    return {"fields": ui_schema(), "models": FPT_MODELS, "vocabularies": VOCABULARIES}
+    return {
+        "fields": ui_schema(),
+        "models": FPT_MODELS,
+        "vocabularies": VOCABULARIES,
+        "attack_patterns": pattern_catalog(),
+    }
 
 
 # ── authoring ──────────────────────────────────────────────────────────────
@@ -176,7 +183,7 @@ async def generate(req: GenerateRequest) -> dict[str, Any]:
             tags=req.tags, brief=req.brief, settings=settings,
             model=req.model, judge_model=req.judge_model,
             repeats=req.repeats, max_turns=req.max_turns,
-            variation_seed=req.variation_seed, critique=req.critique,
+            variation_seed=req.variation_seed, pattern=req.pattern, critique=req.critique,
         )
     except Exception as e:
         raise HTTPException(502, f"generation failed: {type(e).__name__}: {e}") from e

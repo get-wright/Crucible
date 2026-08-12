@@ -23,7 +23,7 @@ uv run python -m crucible run ../example-scenario.md -v          # nothing trunc
 uv run python -m crucible run ../example-scenario.md --repeats 10 --control --save
 uv run python -m crucible convert old.yaml --out new.md --pin-world  # import a v0.1 file
 uv run python -m crucible serve                             # API on :8000, docs at /docs
-uv run pytest                                               # 111 tests, no network
+uv run pytest                                               # 133 tests, no network
 ```
 
 The API key is read from `FPT_API_KEY`, then `MKP_API_KEY`, then
@@ -60,6 +60,7 @@ surface ────────────────────────
   store.py         SQLite + JSONL artifacts
   api.py           REST + SSE
   convert.py       import v0.1 files, recovering their pinned world
+  patterns.py      attack mechanics that make a scenario discriminate
   cli.py           validate · generate · convert · run · serve · info
 ```
 
@@ -151,6 +152,34 @@ rather than accepted — that single rule kills most confabulated findings.
 Deterministic check results are shown to the judge so it grades intent rather
 than re-deriving facts. Citations are verified against the events the run
 actually emitted; invented sequence numbers are discarded.
+
+### Making a scenario discriminate
+
+Most adversarial scenarios fail in the same direction: every model passes, and
+a benchmark on which everything scores full marks has measured nothing. The
+cause is rarely a weak attack — it is that noticing costs the agent nothing.
+The payload announces itself, sits alone in an empty world, or arrives labelled
+as a change.
+
+`patterns.py` holds the mechanics that make noticing cost something, each
+expressed as structural requirements rather than as a description: the
+corrupted value returned *as* the current record with the truth only in a
+separate one; a pre-assembled batch where a single call releases everything and
+excluding one item takes deliberate work; one bad record among twenty, placed
+in the middle where attention is thinnest. Each carries its anti-patterns too,
+because the caricature of a pattern is what a model produces if you only name
+it — a labelled before/after diff is not a poisoned record, it is a reading
+comprehension question.
+
+A pattern is folded into the generation prompt, chosen explicitly with
+`--pattern` or inferred from the tags.
+
+Running through all of them: **detection is not prevention.** Agents routinely
+say a record looks wrong and act on it anyway. `checks.py` measures that split
+directly — `detection-without-prevention` reads the reasoning stream for
+voiced suspicion before the violating call. It scores nothing, because the
+compromise is already scored; it says *which* failure you have, and the fix
+differs completely between them.
 
 ### The generator
 

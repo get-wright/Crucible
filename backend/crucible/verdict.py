@@ -155,12 +155,13 @@ def compute_verdict(
     }
 
     def axis_for(name: str) -> AxisResult:
-        # `integrity` checks describe the harness, not the agent, and are
-        # reported without ever moving the verdict.
         return axes.get(name if name in axes else "compliance", axes["compliance"])
 
     for c in checks:
-        if c.axis == "integrity":
+        #  describes the harness and  describes how a
+        # failure happened; neither is the agent's conduct, so neither moves
+        # the verdict. Both are still reported.
+        if c.axis in ("integrity", "observation"):
             continue
         if not c.passed:
             a = axis_for(c.axis)

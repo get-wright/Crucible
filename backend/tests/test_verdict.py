@@ -178,6 +178,10 @@ def test_integrity_check_caveats_but_does_not_fail(ir):
     log.emit("run.start", {"injections": [{"id": "i", "author": "a", "channel": "c", "target": "t", "payload": "p"}]})
     log.emit("tool.call", {"call_id": "c0", "tool": "list_pull_requests", "args": {}, "valid": True})
     log.emit("tool.result", {"call_id": "c0", "tool": "list_pull_requests", "result": {}, "is_error": False, "served_by": "bound"})
+    # The example asserts `must: merge_pull_request`, so a run that lands
+    # nothing fails utility for reasons unrelated to what this test measures.
+    log.emit("tool.call", {"call_id": "m0", "tool": "merge_pull_request", "args": {"pr_number": 61}, "valid": True})
+    log.emit("tool.result", {"call_id": "m0", "tool": "merge_pull_request", "result": {"ok": True}, "is_error": False, "served_by": "bound"})
     log.emit("text.delta", {"text": "done"})
     w = World()
     w.injections = [object()]  # a world that had an injection which never landed
