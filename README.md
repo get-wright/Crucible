@@ -27,15 +27,32 @@ in a log file.
 
 ## 1. Setup
 
-Needs Python 3.12+ and [uv](https://docs.astral.sh/uv/).
+**Requirements:** Python 3.12+ and [uv](https://docs.astral.sh/uv/). Nothing else
+— no Node, no build step, no database server.
 
 ```bash
-cd backend
-uv sync --extra dev
-uv run python -m crucible info
+git clone https://github.com/get-wright/Crucible.git
+cd Crucible/backend
+uv sync --extra dev          # installs everything, ~15s
 ```
 
-`info` prints what got resolved:
+**Add a model key.** Crucible runs on the FPT AI Marketplace. Either export it:
+
+```bash
+export FPT_API_KEY=sk-...
+```
+
+or put the bare token on one line in a `.env` file at the project root — see
+[`.env.example`](.env.example). Both work; the env var wins.
+
+The key is looked for in this order: `FPT_API_KEY`, `MKP_API_KEY`,
+`CRUCIBLE_FPT_API_KEY`, then that `.env` file.
+
+**Check it:**
+
+```bash
+uv run python -m crucible info
+```
 
 ```
 provider   https://mkp-api.fptcloud.com/v1
@@ -47,16 +64,27 @@ simulator  GLM-5.2            # plays the tools and the world
 generator  GLM-5.2            # writes scenarios
 ```
 
-**The API key** is looked for in this order: `FPT_API_KEY`, `MKP_API_KEY`,
-`CRUCIBLE_FPT_API_KEY`, then a `.env` file at the project root containing just
-the bare token on one line.
-
-**If it says `key MISSING`**, everything below still works — Crucible falls
-back to a scripted stand-in model and runs the whole pipeline offline. Useful
-for trying it out, and it's what the test suite uses. You just won't get real
+**If it says `key MISSING`, everything still works.** Crucible falls back to a
+deterministic scripted model and runs the whole pipeline offline — useful for
+trying it out, and it is what the test suite uses. You just won't get real
 model behaviour.
 
-Change models with environment variables:
+**Start the interface:**
+
+```bash
+uv run python -m crucible serve      # → http://127.0.0.1:8000
+```
+
+That serves the browser interface and the API from one process. Or stay in the
+terminal — every screen has a CLI equivalent (§6).
+
+**Verify the install:**
+
+```bash
+uv run pytest                # 170 tests, no network or API key required
+```
+
+### Choosing models
 
 ```bash
 export CRUCIBLE_TARGET_MODEL=DeepSeek-V4-Flash
@@ -67,7 +95,15 @@ Available: `GLM-5.2`, `DeepSeek-V4-Flash`, `Qwen3.6-27B`, `gpt-oss-120b`.
 Keep the judge different from the target — a model grading itself scores itself
 generously, and Crucible flags it when they match.
 
----
+### Where things get written
+
+| Path | What |
+|---|---|
+| `backend/data/runs/*.jsonl` | one event log per run |
+| `backend/data/worlds/*.json` | seeded worlds, cached by scenario hash + seed |
+| `backend/data/crucible.db` | scenarios, runs, verdicts |
+
+All of it is regenerable and none of it is in git.
 
 ## 2. Your first run
 
@@ -355,6 +391,10 @@ toolchain — it is plain HTML served by the same process that runs the
 evaluations, and it talks only to the documented API, so it can do nothing an
 API client could not.
 
+It is a plain HTML/CSS/JS application with no build step, served by the same
+process that runs the evaluations. Every screen has its own URL, so a result
+can be pasted to someone else and the browser Back button behaves.
+
 Four screens:
 
 - **Library** — every scenario, filterable by taxonomy facet, with recent
@@ -372,12 +412,31 @@ Four screens:
   it, every judge criterion with its reasoning and cited events, and a strip of
   one cell per run.
 
-Two deliberate constraints in the design. The two headline rates render as a
-single component, because either one alone is trivially gameable in the
-opposite direction — refuse everything and attack success is zero. And no
-verdict colour ever appears without its name beside it: the five verdicts are
-an ordered severity scale drawn as a diverging ramp, with INCONCLUSIVE left
-unfilled because it sits off the scale entirely.
+Design constraints worth knowing, because they are load-bearing rather than
+decorative:
+
+- **The two headline rates are one component.** Reported alone either is
+  trivially gameable in the opposite direction — refuse everything and attack
+  success is zero — so the markup makes showing one without the other
+  impossible rather than merely discouraged.
+- **No verdict colour appears without its name.** The five verdicts are an
+  ordered severity scale drawn as a diverging ramp, with INCONCLUSIVE left
+  unfilled because it sits off the scale entirely. Four separate hues in that
+  range measured ΔE 6.0 apart under normal vision, which labels do not excuse.
+- **The accent is blue, not green.** Green already means SECURE_USEFUL here;
+  reusing it for "this is clickable" would make two different signals the same
+  colour.
+- **Waiting shows work, not a spinner.** Seeding a world takes tens of seconds
+  before the first event exists; that stretch shows a skeleton and says what is
+  happening, because a spinner held for forty seconds reads as a hang.
+- **The transcript is capped** at 400 steps, dropping the oldest and saying how
+  many were hidden — in a long run the opening is setup and the end is the
+  finding.
+
+Keyboard and screen reader: every screen is reachable by tab, findings are
+buttons, the live trajectory is an `aria-live` log, wide tables scroll in their
+own focusable regions rather than scrolling the page, and colour is never the
+only carrier of meaning.
 
 Interactive API docs remain at `/docs`. The endpoints, in the order a UI would use them:
 
