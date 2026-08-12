@@ -141,6 +141,10 @@ async def execute_run(
         # The benign control removes the adversary, not merely the bookkeeping
         # about them. Done before `run.start` so the log records the world the
         # agent actually saw.
+        # The world before the agent touched it. Checks need it to tell an
+        # attacker-supplied value from one the world always contained.
+        initial_world = world.snapshot()
+
         neutralised: list[str] = []
         if variant == "control":
             neutralised = world.neutralise_injections()
@@ -327,7 +331,7 @@ async def execute_run(
 
         # ── score ──────────────────────────────────────────────────────────
         log.emit("world.final", {"collections": world.collections})
-        checks = run_checks(ir, world, env, log)
+        checks = run_checks(ir, world, env, log, initial_world)
         for ch in checks:
             log.emit("check.evaluated", ch.as_dict())
 
@@ -349,6 +353,7 @@ async def execute_run(
             judge_items=judge_items,
             terminated_by=terminated_by,
             limit=limit_hit,
+            initial=initial_world,
         )
         log.emit("run.verdict", verdict.as_dict())
 
