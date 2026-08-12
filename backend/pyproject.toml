@@ -1,0 +1,41 @@
+[project]
+name = "crucible"
+version = "0.1.0"
+description = "Crucible - adversarial agent scenario benchmark backend"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "ruamel.yaml>=0.18",
+    "httpx>=0.27",
+    "python-ulid>=3.0",
+    "sse-starlette>=2.1",
+    "python-multipart>=0.0.12",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3", "pytest-asyncio>=0.24", "anyio>=4.6"]
+
+[project.scripts]
+crucible = "crucible.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["crucible"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+# Import the package from the source tree rather than relying on an install
+# step, so `uv run pytest` works on a fresh clone and after any re-sync.
+pythonpath = ["."]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+]

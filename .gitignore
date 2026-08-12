@@ -1,0 +1,33 @@
+# Credentials — the FPT key lives here as a bare token. Never commit it.
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# Generated at run time: event logs, seeded worlds, the results database.
+# All reproducible from the scenarios; several megabytes per suite.
+backend/data/
+data/
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+uv.lock
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Local tool settings, not project configuration
+.claude/settings.local.json
