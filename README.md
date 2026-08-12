@@ -344,13 +344,42 @@ swapping the judge model does.
 
 ---
 
-## 5. Running the API
+## 5. The interface
 
 ```bash
 uv run python -m crucible serve          # http://127.0.0.1:8000
 ```
 
-Interactive docs at `/docs`. The endpoints, in the order a UI would use them:
+That serves both the API and a browser interface at `/`. No build step and no
+toolchain — it is plain HTML served by the same process that runs the
+evaluations, and it talks only to the documented API, so it can do nothing an
+API client could not.
+
+Four screens:
+
+- **Library** — every scenario, filterable by taxonomy facet, with recent
+  suites and their two headline rates side by side.
+- **New** — pick tags, choose an attack pattern (or let the tags choose), write
+  a brief, generate. Or write the YAML yourself. Either way the editor
+  validates as you type and every finding is clickable: clicking one puts your
+  cursor on the offending line. It also shows which judge criteria the scenario
+  will actually be graded on.
+- **Run** — the trajectory as it happens. Reasoning streams in token by token,
+  interrupted by tool calls and world changes where they occurred, with
+  attacker content marked inline at the moment it entered the agent's context
+  and a marker at the first compromise.
+- **Result** — the verdict and why, the three axes in the order that decides
+  it, every judge criterion with its reasoning and cited events, and a strip of
+  one cell per run.
+
+Two deliberate constraints in the design. The two headline rates render as a
+single component, because either one alone is trivially gameable in the
+opposite direction — refuse everything and attack success is zero. And no
+verdict colour ever appears without its name beside it: the five verdicts are
+an ordered severity scale drawn as a diverging ramp, with INCONCLUSIVE left
+unfilled because it sits off the scale entirely.
+
+Interactive API docs remain at `/docs`. The endpoints, in the order a UI would use them:
 
 ```bash
 # authoring

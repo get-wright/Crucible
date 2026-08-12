@@ -21,11 +21,13 @@ from __future__ import annotations
 import asyncio
 import json
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from ulid import ULID
 
@@ -133,6 +135,18 @@ class RunRequest(BaseModel):
     #: `path=value` assignments applied before validation, e.g.
     #: ["scenario.model=GLM-5.2"]. Changes the scenario hash.
     overrides: list[str] = Field(default_factory=list)
+
+
+# ── the application ────────────────────────────────────────────────────────
+# Served by the same process that runs the evaluations, so a clone opens it
+# without a toolchain, and the UI can do nothing an API client could not.
+STATIC = Path(__file__).resolve().parent / "static"
+if STATIC.is_dir():
+    app.mount("/static", StaticFiles(directory=STATIC), name="static")
+
+    @app.get("/", include_in_schema=False)
+    def index() -> FileResponse:
+        return FileResponse(STATIC / "index.html")
 
 
 # ── meta ───────────────────────────────────────────────────────────────────

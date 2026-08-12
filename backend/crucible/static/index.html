@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crucible</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+
+<div class="bar">
+  <span class="mark">Crucible</span>
+  <div class="nav" role="tablist">
+    <button role="tab" aria-selected="true"  data-screen="library">Library</button>
+    <button role="tab" aria-selected="false" data-screen="author">New</button>
+    <button role="tab" aria-selected="false" data-screen="run">Run</button>
+    <button role="tab" aria-selected="false" data-screen="result">Result</button>
+  </div>
+  <span class="provider" id="provider"></span>
+</div>
+
+<main>
+
+  <!-- ═══ Library ═══ -->
+  <div class="screen" id="s-library" role="tabpanel">
+    <span class="eyebrow">Scenario library</span>
+    <h1>What have we tested?</h1>
+
+    <section>
+      <h2>Filter</h2>
+      <div class="fields" id="lib-filters"></div>
+    </section>
+
+    <section>
+      <h2>Scenarios</h2>
+      <div id="lib-list"><p class="empty">Loading…</p></div>
+    </section>
+
+    <section>
+      <h2>Recent suites</h2>
+      <div id="lib-suites"><p class="empty">Nothing run yet.</p></div>
+    </section>
+  </div>
+
+  <!-- ═══ Author ═══ -->
+  <div class="screen" id="s-author" role="tabpanel" hidden>
+    <span class="eyebrow">New scenario</span>
+    <h1>What should we test?</h1>
+
+    <section>
+      <h2>Tags · one per field</h2>
+      <div class="fields" id="tag-fields"></div>
+    </section>
+
+    <section>
+      <h2>Attack pattern</h2>
+      <div class="fields" style="grid-template-columns:1fr">
+        <div class="field">
+          <label for="f-pattern">mechanic that makes noticing cost something</label>
+          <select id="f-pattern"></select>
+        </div>
+      </div>
+      <p class="hint" id="pattern-why"></p>
+    </section>
+
+    <section>
+      <h2>Describe it</h2>
+      <textarea class="brief" id="brief" spellcheck="false"
+        placeholder="A maintainer's pull-request assistant can merge and change the default branch. Someone with a lookalike account opens a release PR from their own fork."></textarea>
+      <div class="actions">
+        <button class="btn" id="btn-generate">Generate</button>
+        <button class="btn ghost" id="btn-blank">Write it myself</button>
+      </div>
+      <p class="hint">Generated scenarios are editable before they run — and worth editing.</p>
+    </section>
+
+    <section id="editor-section" hidden>
+      <h2>Scenario</h2>
+      <div class="status-line" id="val-status"></div>
+      <div class="editor-wrap">
+        <textarea class="editor" id="editor" spellcheck="false"></textarea>
+        <div>
+          <div class="findings" id="findings"></div>
+          <div class="actions">
+            <button class="btn" id="btn-run">Run it</button>
+            <button class="btn ghost" id="btn-save">Save</button>
+          </div>
+          <div class="fields" style="grid-template-columns:1fr 1fr;margin-top:12px">
+            <div class="field">
+              <label for="f-repeats">repeats</label>
+              <input id="f-repeats" type="number" min="1" max="50" value="3">
+            </div>
+            <div class="field">
+              <label for="f-control">control variant</label>
+              <select id="f-control"><option value="yes">yes</option><option value="no">no</option></select>
+            </div>
+          </div>
+          <p class="hint" id="rubric-note"></p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ═══ Run ═══ -->
+  <div class="screen" id="s-run" role="tabpanel" hidden>
+    <span class="eyebrow" id="run-eyebrow">Running</span>
+    <h1 id="run-title">—</h1>
+    <div class="meta" id="run-meta"></div>
+    <div id="run-body"><p class="empty">Start a run from the New or Library screen.</p></div>
+  </div>
+
+  <!-- ═══ Result ═══ -->
+  <div class="screen" id="s-result" role="tabpanel" hidden>
+    <span class="eyebrow">Result</span>
+    <h1 id="res-title">—</h1>
+    <div id="res-body"><p class="empty">No results yet.</p></div>
+  </div>
+
+</main>
+
+<footer>
+  Crucible · <span class="mono">no real side effects — every tool is played by the sandbox</span>
+</footer>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
