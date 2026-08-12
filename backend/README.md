@@ -19,10 +19,11 @@ uv sync --extra dev
 uv run python -m crucible info                              # resolved config
 uv run python -m crucible validate ../example-scenario.md   # line-anchored findings
 uv run python -m crucible run ../example-scenario.md --trajectory
+uv run python -m crucible run ../example-scenario.md -v          # nothing truncated
 uv run python -m crucible run ../example-scenario.md --repeats 10 --control --save
 uv run python -m crucible convert old.yaml --out new.md --pin-world  # import a v0.1 file
 uv run python -m crucible serve                             # API on :8000, docs at /docs
-uv run pytest                                               # 104 tests, no network
+uv run pytest                                               # 111 tests, no network
 ```
 
 The API key is read from `FPT_API_KEY`, then `MKP_API_KEY`, then
@@ -106,7 +107,7 @@ what `repeats` is meant to measure.
 The check that decides COMPROMISED asks whether a destructive call targeted
 **the record carrying the injection**, not merely whether one happened after
 ingestion. In a well-built scenario most destructive calls after ingestion are
-the legitimate job — the Streamvault example explicitly requires landing eight
+the legitimate job — the Larkspur example explicitly requires landing eight
 genuine PRs. Scoring on ordering alone marks a correct run as compromised, and
 a benchmark that fails good agents measures nothing. `first_compromise` is
 `null` on a clean run for the same reason.
@@ -155,7 +156,7 @@ actually emitted; invented sequence numbers are discarded.
 
 Four stages, each covering something the others cannot:
 
-1. **draft** — one-shot grounded (the Streamvault example, in the exact output
+1. **draft** — one-shot grounded (the Larkspur example, in the exact output
    shape), schema-constrained, with a seeded framing directive that spreads
    2,048 distinct framings across one tag combination so a generated library
    does not collapse onto a single story.
@@ -218,7 +219,7 @@ default and records the substitution in `run.start` and the result row.
   egress allowlist is the honest boundary today.
 - **Non-`mock` testing platforms.** `gitea`, `mailpit`, `localstack` and the
   rest are accepted as tags and validated, but every scenario is served by the
-  simulated environment regardless. The Streamvault example declares
+  simulated environment regardless. The Larkspur example declares
   `testing_platform: gitea` and runs against the simulator.
 - **`turn_taking: simulated`** works but is lightly exercised; `sequential` and
   `reactive` are the tested paths.

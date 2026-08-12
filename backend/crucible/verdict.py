@@ -16,7 +16,7 @@ that rung, over-refusal reads as a pass and the benchmark measures caution.
 
 `first_compromise` links the verdict back to the specific injection and
 sequence number. That single field is what turns "the agent failed" into "the
-agent failed 118 events in, immediately after ingesting `ipi-pr59-cutover`
+agent failed 118 events in, immediately after ingesting `ipi-pr47-cutover`
 via `get_pull_request_threads`."
 """
 

@@ -29,6 +29,18 @@ VERDICT_COLOUR = {
 }
 
 
+def _clip(text: str, width: int, full: bool) -> str:
+    """Truncate for scanning, or hand back everything under -v.
+
+    Every printed field goes through this, so `-v` is one switch rather than a
+    dozen call sites that each have to remember their own limit.
+    """
+    text = str(text)
+    if full or len(text) <= width:
+        return text
+    return text[:width] + "…"
+
+
 def _print_findings(result) -> None:
     for f in result.findings:
         colour = RED if f.severity == "error" else YELLOW
@@ -76,32 +88,174 @@ def cmd_generate(args: argparse.Namespace) -> int:
     return 0 if result.validation.ok else 1
 
 
-def _print_trajectory(log) -> None:
+def _print_trajectory(log, full: bool = False) -> None:
     for m in log.messages():
         kind, seq = m["kind"], m["seq"]
         if kind == "participant":
-            print(f"  {BLUE}[{seq:>4}] {m['display_name']}{RESET}: {m['text'][:160]}")
+            print(f"  {BLUE}[{seq:>4}] {m['display_name']}{RESET}: {_clip(m['text'], 160, full)}")
             for a in m.get("attachments") or []:
                 print(f"         {DIM}attached {a.get('name')}{RESET}")
+                if full and a.get("content"):
+                    for line in str(a["content"]).splitlines():
+                        print(f"         {DIM}| {line}{RESET}")
         elif kind == "reasoning":
-            print(f"  {DIM}[{seq:>4}] think: {m['text'][:160]}{RESET}")
+            print(f"  {DIM}[{seq:>4}] think: {_clip(m['text'], 160, full)}{RESET}")
         elif kind == "text":
-            print(f"  [{seq:>4}] {BOLD}agent{RESET}: {m['text'][:160]}")
+            print(f"  [{seq:>4}] {BOLD}agent{RESET}: {_clip(m['text'], 160, full)}")
         elif kind == "tool":
             mark = f"{RED}✗{RESET}" if m.get("is_error") else f"{GREEN}✓{RESET}"
             danger = f" {RED}destructive{RESET}" if m.get("destructive") else ""
             inj = f" {RED}carried:{m['injections']}{RESET}" if m.get("injections") else ""
-            print(
-                f"  [{seq:>4}] {mark} {m['tool']}({json.dumps(m.get('args'), default=str)[:90]})"
-                f"{danger}{inj}"
-            )
+            args = json.dumps(m.get("args"), default=str)
+            print(f"  [{seq:>4}] {mark} {m['tool']}({_clip(args, 90, full)}){danger}{inj}")
+            if full:
+                served = f" {DIM}via {m.get('served_by')}{RESET}" if m.get("served_by") else ""
+                print(f"         {DIM}->{RESET}{served} {json.dumps(m.get('result'), default=str)}")
+                if m.get("schema_errors"):
+                    print(f"         {RED}schema errors:{RESET} {m['schema_errors']}")
         elif kind == "injection":
             print(
                 f"  {MAGENTA}[{seq:>4}] ⚑ injection {m['injection_id']} "
                 f"by {m['author']} via {m['channel']}{RESET}"
             )
         elif kind == "notice":
-            print(f"  {YELLOW}[{seq:>4}] {m.get('type')}{RESET} {json.dumps({k: v for k, v in m.items() if k not in ('kind','seq','turn','type')}, default=str)[:140]}")
+            rest = json.dumps({k: v for k, v in m.items() if k not in ("kind", "seq", "turn", "type")}, default=str)
+            print(f"  {YELLOW}[{seq:>4}] {m.get('type')}{RESET} {_clip(rest, 140, full)}")
+
+
+def _print_run_header(log) -> None:
+    """What the run was configured with and what world it faced.
+
+    Under -v this comes first, because a trajectory read without knowing which
+    injections were seeded — or that a model was substituted — can be
+    interpreted wrongly in both directions.
+    """
+    starts = log.of_type("run.start")
+    if not starts:
+        return
+    d = starts[0].data
+    print(f"  {DIM}model      {RESET}{d.get('model')}   {DIM}judge{RESET} {d.get('judge_model')}"
+          f"   {DIM}simulator{RESET} {d.get('simulator_model')}")
+    print(f"  {DIM}variant    {RESET}{d.get('variant')} #{d.get('repeat')}   "
+          f"{DIM}seed{RESET} {d.get('seed')}   {DIM}world from cache{RESET} {d.get('world_from_cache')}")
+    print(f"  {DIM}limits     {RESET}{json.dumps(d.get('limits'), default=str)}")
+    for note in d.get("model_substitutions") or []:
+        print(f"  {YELLOW}substituted{RESET} {note}")
+    if d.get("world_summary"):
+        print(f"  {DIM}world      {RESET}{d['world_summary']}")
+    for inj in d.get("injections") or []:
+        print(f"  {MAGENTA}seeded injection{RESET} {inj.get('id')} by {inj.get('author')} "
+              f"via {inj.get('channel')} at {inj.get('target')}")
+        print(f"      {DIM}{inj.get('payload')}{RESET}")
+    for note in d.get("planted") or []:
+        print(f"  {DIM}planted    {note}{RESET}")
+    for note in d.get("control_neutralised") or []:
+        print(f"  {DIM}neutralised {note}{RESET}")
+
+
+def _print_events_full(log) -> None:
+    """Every event, in sequence order, nothing withheld.
+
+    Deliberately renders the raw stream rather than the rolled-up view the
+    non-verbose path uses: the rollup drops state patches, per-call token
+    usage, checks and the seeded world, which are exactly the things someone
+    reaching for -v is looking for. Consecutive reasoning and text deltas are
+    still merged into one block, because thousands of token-level events are
+    noise rather than detail.
+    """
+    buf_kind, buf = None, []
+
+    def flush() -> None:
+        nonlocal buf_kind, buf
+        if buf and "".join(buf).strip():
+            text = "".join(buf)
+            label = f"{DIM}think{RESET}" if buf_kind == "reasoning.delta" else f"{BOLD}agent{RESET}"
+            body = f"{DIM}{text}{RESET}" if buf_kind == "reasoning.delta" else text
+            print(f"  [{buf_seq:>5}] {label}: {body}")
+        buf_kind, buf = None, []
+
+    buf_seq = 0
+    for e in log.events:
+        if e.type in ("reasoning.delta", "text.delta"):
+            if buf_kind != e.type:
+                flush()
+                buf_kind, buf_seq = e.type, e.seq
+            buf.append(e.data.get("text", ""))
+            continue
+        flush()
+        d, seq = e.data, e.seq
+        if e.type == "run.start":
+            continue  # rendered by _print_run_header
+        if e.type == "turn.start":
+            print(f"  {BLUE}[{seq:>5}] {d.get('display_name')}{RESET} "
+                  f"{DIM}({d.get('source')}){RESET}: {d.get('content')}")
+            for a in d.get("attachments") or []:
+                print(f"          {DIM}attached {a.get('name')} ({a.get('type')}){RESET}")
+                for line in str(a.get("content") or "").splitlines():
+                    print(f"          {DIM}| {line}{RESET}")
+        elif e.type == "tool.call":
+            bad = f" {RED}INVALID{RESET}" if not d.get("valid", True) else ""
+            danger = f" {RED}destructive{RESET}" if d.get("destructive") else ""
+            print(f"  [{seq:>5}] {BOLD}call{RESET}  {d.get('tool')}"
+                  f"({json.dumps(d.get('args'), default=str)}){danger}{bad}")
+            for err in d.get("schema_errors") or []:
+                print(f"          {RED}{err}{RESET}")
+        elif e.type == "tool.result":
+            mark = f"{RED}error{RESET}" if d.get("is_error") else f"{GREEN}ok{RESET}"
+            print(f"  [{seq:>5}] {mark:<5} {DIM}{d.get('served_by')} "
+                  f"{d.get('latency_ms')}ms{RESET} {json.dumps(d.get('result'), default=str)}")
+        elif e.type == "injection.delivered":
+            print(f"  {MAGENTA}[{seq:>5}] INJECTION DELIVERED {d.get('injection_id')} "
+                  f"by {d.get('author')} via {d.get('channel')} "
+                  f"(offset {d.get('char_offset')}, {d.get('char_len')} chars){RESET}")
+        elif e.type == "state.patch":
+            print(f"  {YELLOW}[{seq:>5}] state {d.get('path')}: "
+                  f"{json.dumps(d.get('before'), default=str)} -> "
+                  f"{json.dumps(d.get('after'), default=str)}{RESET}")
+        elif e.type == "llm.response":
+            print(f"  {DIM}[{seq:>5}] llm   finish={d.get('finish_reason')} "
+                  f"in={d.get('input_tokens')} out={d.get('output_tokens')} "
+                  f"calls={d.get('tool_call_count')}{RESET}")
+        elif e.type == "check.evaluated":
+            mark = f"{GREEN}PASS{RESET}" if d.get("passed") else f"{RED}FAIL{RESET}"
+            print(f"  [{seq:>5}] check {mark} {d.get('check_id')} ({d.get('axis')}) "
+                  f"{DIM}expected {d.get('expect')}, observed {d.get('actual')} "
+                  f"evidence={d.get('evidence')}{RESET}")
+            print(f"          {DIM}{d.get('assert')}{RESET}")
+        elif e.type == "world.final":
+            print(f"  {DIM}[{seq:>5}] final world state:{RESET}")
+            print(f"          {DIM}{json.dumps(d.get('collections'), default=str)}{RESET}")
+        elif e.type in ("limit.hit", "run.error", "egress.denied"):
+            print(f"  {RED}[{seq:>5}] {e.type}{RESET} {json.dumps(d, default=str)}")
+        elif e.type == "judge.item":
+            mark = f"{GREEN}YES{RESET}" if d.get("answer") else f"{RED}NO{RESET}"
+            print(f"  [{seq:>5}] judge {mark} {d.get('rubric_id')} "
+                  f"{DIM}conf={d.get('confidence')} cites={d.get('citation')}{RESET}")
+        elif e.type not in ("run.verdict", "llm.request"):
+            print(f"  {DIM}[{seq:>5}] {e.type} {json.dumps(d, default=str)}{RESET}")
+    flush()
+
+
+def _print_verdict(r, full: bool = False) -> None:
+    colour = VERDICT_COLOUR.get(r.verdict.verdict, "")
+    print(f"\n{colour}{BOLD}{r.verdict.verdict}{RESET}  {r.verdict.rationale}")
+    for name, axis in r.verdict.axes.items():
+        mark = GREEN + "pass" if axis.result == "pass" else RED + "fail"
+        detail = ", ".join(axis.failed)
+        if full and axis.inconclusive:
+            detail += f"  (inconclusive: {', '.join(axis.inconclusive)})"
+        print(f"  {name:<11} {mark}{RESET} {DIM}{detail}{RESET}")
+    for j in r.verdict.judge.get("items", []):
+        mark = f"{GREEN}YES{RESET}" if j["answer"] else f"{RED}NO {RESET}"
+        ok = f"{GREEN}✓{RESET}" if j["passed"] else f"{RED}✗{RESET}"
+        print(f"  {ok} {mark} {j['rubric_id']:<32} {DIM}cites {j['citation'][:4]}{RESET}")
+        if full:
+            print(f"        {DIM}{j['reason']}{RESET}")
+    if full and r.verdict.first_compromise:
+        print(f"  {DIM}first_compromise: {json.dumps(r.verdict.first_compromise, default=str)}{RESET}")
+    if full and r.log_path:
+        print(f"  {DIM}events: {r.log_path}{RESET}")
+    print(f"\n{DIM}{r.wall_ms/1000:.1f}s · {r.usage.input_tokens} in / {r.usage.output_tokens} out{RESET}")
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -120,19 +274,13 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     if args.repeats == 1 and not args.control:
         r = asyncio.run(execute_run(ir, seed=args.seed, judge=not args.no_judge))
-        colour = VERDICT_COLOUR.get(r.verdict.verdict, "")
         print(f"\n{BOLD}{ir.scenario.name}{RESET}")
-        if args.trajectory:
+        if args.verbose:
+            _print_run_header(r.log)
+            _print_events_full(r.log)
+        elif args.trajectory:
             _print_trajectory(r.log)
-        print(f"\n{colour}{BOLD}{r.verdict.verdict}{RESET}  {r.verdict.rationale}")
-        for name, axis in r.verdict.axes.items():
-            mark = GREEN + "pass" if axis.result == "pass" else RED + "fail"
-            print(f"  {name:<11} {mark}{RESET} {DIM}{', '.join(axis.failed)}{RESET}")
-        for j in r.verdict.judge.get("items", []):
-            mark = f"{GREEN}YES{RESET}" if j["answer"] else f"{RED}NO {RESET}"
-            ok = f"{GREEN}✓{RESET}" if j["passed"] else f"{RED}✗{RESET}"
-            print(f"  {ok} {mark} {j['rubric_id']:<32} {DIM}cites {j['citation'][:4]}{RESET}")
-        print(f"\n{DIM}{r.wall_ms/1000:.1f}s · {r.usage.input_tokens} in / {r.usage.output_tokens} out{RESET}")
+        _print_verdict(r, full=args.verbose)
         return 0
 
     store = Store() if args.save else None
@@ -146,6 +294,18 @@ def cmd_run(args: argparse.Namespace) -> int:
     for r in sorted(suite.runs, key=lambda r: (r.variant, r.repeat)):
         colour = VERDICT_COLOUR.get(r.verdict.verdict, "")
         print(f"  {r.variant:<8} #{r.repeat:<3} {colour}{r.verdict.verdict:<17}{RESET} {DIM}{r.wall_ms/1000:>6.1f}s{RESET}")
+    # Under -v each repeat is printed whole. The one-line summary above is
+    # still shown first, so the shape of the suite stays readable before the
+    # transcripts scroll past.
+    if args.verbose or args.trajectory:
+        for r in sorted(suite.runs, key=lambda r: (r.variant, r.repeat)):
+            print(f"\n{BOLD}── {r.variant} #{r.repeat}{RESET} {DIM}{r.run_id}{RESET}")
+            if args.verbose:
+                _print_run_header(r.log)
+                _print_events_full(r.log)
+            else:
+                _print_trajectory(r.log)
+            _print_verdict(r, full=args.verbose)
     m = suite.metrics
     print(f"\n{BOLD}metrics{RESET}")
     print(f"  attack_success_rate   {m.attack_success_rate:.0%}   ({m.attack_runs} attack runs)")
@@ -242,7 +402,10 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--seed", type=int, default=0)
     r.add_argument("--model")
     r.add_argument("--concurrency", type=int, default=4)
-    r.add_argument("--trajectory", action="store_true", help="print the full trajectory")
+    r.add_argument("--trajectory", action="store_true", help="print the trajectory")
+    r.add_argument("-v", "--verbose", action="store_true",
+                   help="full untruncated output: trajectory, tool results, judge reasoning, "
+                        "and every repeat of a suite")
     r.add_argument("--no-judge", action="store_true")
     r.add_argument("--save", action="store_true", help="persist to the store")
     r.set_defaults(fn=cmd_run)

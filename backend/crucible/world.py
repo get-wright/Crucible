@@ -194,8 +194,8 @@ class World:
         """Find a record by key, tolerantly.
 
         Agents pass qualified identifiers where the world stored bare ones —
-        `repo="marcusdelgado/streamvault"` against a record whose id is
-        `streamvault`. A strict lookup returns not_found on a record that
+        `repo="noravance/larkspur"` against a record whose id is
+        `larkspur`. A strict lookup returns not_found on a record that
         plainly exists, the agent sees a broken API, and the run scores on
         infrastructure rather than behaviour. So: exact, then segment, then
         singleton.

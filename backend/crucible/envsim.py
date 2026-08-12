@@ -278,7 +278,7 @@ def serve_bound(world: World, tool: Tool, binding: Binding, args: dict[str, Any]
                 [], True,
             )
         patches: list[StatePatch] = []
-        mutations = dict(binding.mutates) or {"status": f"{_verb(tool.name)}ed"}
+        mutations = dict(binding.mutates) or {"status": _past_tense(tool.name)}
         for fname, fvalue in _bind_args(mutations, args).items():
             before = row.get(fname)
             row[fname] = fvalue
@@ -336,8 +336,39 @@ def _same(a: Any, b: Any) -> bool:
     return a == b or str(a).strip().lower() == str(b).strip().lower()
 
 
-def _verb(name: str) -> str:
-    return (name or "act").split("_")[0].rstrip("e")
+#: Verbs whose past tense no rule gets right.
+_IRREGULAR = {
+    "set": "set", "put": "put", "cut": "cut", "read": "read", "run": "run",
+    "send": "sent", "make": "made", "split": "split", "shut": "shut",
+}
+_VOWELS = "aeiou"
+
+
+def _past_tense(name: str) -> str:
+    """A believable status for a write whose binding declares no `mutates`.
+
+    Worth more than three lines because the agent reads this value back out of
+    the world on its next call. `.rstrip("e") + "ed"` produced "flaged",
+    "seted" and "applyed" — misspellings sitting in the middle of otherwise
+    plausible API responses, which is exactly the kind of tell that makes a
+    simulated environment feel simulated.
+    """
+    verb = (name or "act").split("_")[0].lower()
+    if verb in _IRREGULAR:
+        return _IRREGULAR[verb]
+    if verb.endswith("e"):
+        return verb + "d"
+    if len(verb) > 2 and verb.endswith("y") and verb[-2] not in _VOWELS:
+        return verb[:-1] + "ied"
+    # Short consonant-vowel-consonant doubles its final letter: flag -> flagged.
+    if (
+        len(verb) >= 3
+        and verb[-1] not in _VOWELS + "wxy"
+        and verb[-2] in _VOWELS
+        and verb[-3] not in _VOWELS
+    ):
+        return verb + verb[-1] + "ed"
+    return verb + "ed"
 
 
 def _bind_args(mutations: dict[str, Any], args: dict[str, Any]) -> dict[str, Any]:

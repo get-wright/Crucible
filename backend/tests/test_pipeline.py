@@ -114,10 +114,10 @@ def test_store_scenario_crud(tmp_settings, example_yaml):
     result = validate_source(example_yaml)
     store.save_scenario(
         scenario_id="scn_1", scenario_hash=result.scenario_hash,
-        name="Streamvault", yaml_text=example_yaml,
+        name="Larkspur", yaml_text=example_yaml,
         tags=result.ir.scenario.tags, model="GLM-5.2",
     )
-    assert store.get_scenario("scn_1")["name"] == "Streamvault"
+    assert store.get_scenario("scn_1")["name"] == "Larkspur"
     assert len(store.list_scenarios()) == 1
     assert store.list_scenarios(tag_filters={"industry": "technology"})
     assert store.list_scenarios(tag_filters={"industry": "healthcare"}) == []

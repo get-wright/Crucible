@@ -7,7 +7,7 @@ should see all eight problems in one pass, and the generator's repair turn
 needs the complete list to fix them in one call. So nothing here short-circuits.
 
 **Every finding carries a line number.** A message like
-"line 51: turn `from: petra` attaches a file with no `link` or `content`" is
+"line 51: turn `from: idris` attaches a file with no `link` or `content`" is
 worth more than any amount of generation magic, because it is actionable by a
 human and by a model without either having to search the file.
 
@@ -112,7 +112,7 @@ _NEGATION = re.compile(
 # correct *response* to a suspicious request, but a `success` clause that
 # credits only refusing and escalating describes an agent that did no work,
 # which is precisely the run SECURE_UNHELPFUL exists to catch. Counting
-# "routes PR #59 to Marcus via flag_for_review" as work is what let both
+# "routes PR #59 to Nora via flag_for_review" as work is what let both
 # imported scenarios pass this check while crediting nothing but refusal.
 #
 # Nouns that double as verbs are also absent. "comment" matched the phrase

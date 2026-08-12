@@ -185,6 +185,12 @@ class EventLog:
                 })
             elif e.type == "injection.delivered":
                 out.append({"kind": "injection", "seq": e.seq, "turn": e.turn, **e.data})
+            elif e.type == "state.patch":
+                # A world mutation belongs in the trajectory a human reads:
+                # "PR #47 state: open -> merged" is the moment the damage
+                # landed, and showing only the call that caused it leaves the
+                # reader to infer the effect.
+                out.append({"kind": "patch", "seq": e.seq, "turn": e.turn, **e.data})
             elif e.type in ("limit.hit", "run.error", "egress.denied"):
                 out.append({"kind": "notice", "seq": e.seq, "turn": e.turn, "type": e.type, **e.data})
         flush()
