@@ -252,6 +252,8 @@ def _print_run_header(log) -> None:
         print(f"      {DIM}{inj.get('payload')}{RESET}")
     for note in d.get("planted") or []:
         print(f"  {DIM}planted    {note}{RESET}")
+    for note in d.get("world_notes") or []:
+        print(f"  {YELLOW}world fix  {RESET}{note}")
     for note in d.get("control_neutralised") or []:
         print(f"  {DIM}neutralised {note}{RESET}")
 

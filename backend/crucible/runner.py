@@ -168,6 +168,7 @@ async def execute_run(
                 "world_summary": world.summary,
                 "injections": [asdict(i) for i in world.injections],
                 "planted": world.planted,
+                "world_notes": world.notes,
                 "control_neutralised": neutralised,
             },
         )
