@@ -441,6 +441,26 @@ table.rows button.link {
 }
 table.rows button.link:hover { background: var(--accent-bg); }
 
+/* Where the scenario went. Sits directly under the Save/Run pair, because the
+   file path is the answer to "did that do anything?" — and it is the argument
+   you paste into the run command. */
+.file-line {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2);
+  margin: var(--s-3) 0 0; font-size: 13px; color: var(--ink-2);
+}
+.file-line code {
+  font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere;
+  padding: 2px var(--s-2); border-radius: var(--r-sm);
+  background: var(--raised); border: 1px solid var(--line);
+}
+.file-line a.link {
+  display: inline-flex; align-items: center; min-height: 44px; padding: 0 var(--s-2);
+  margin: 0 calc(var(--s-2) * -1); color: var(--accent); border-radius: var(--r-sm);
+  transition: background var(--t-fast) var(--ease);
+}
+.file-line a.link:hover { background: var(--accent-bg); }
+#run-hint { overflow-wrap: anywhere; font-size: 12px; margin-top: var(--s-1); }
+
 .check { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--s-3); align-items: baseline; padding: var(--s-2) 0; border-top: 1px solid var(--line); font-size: 14px; }
 .check:first-of-type { border-top: 0; }
 .check .st { display: inline-flex; align-items: center; gap: var(--s-1); font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .06em; }

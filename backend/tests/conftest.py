@@ -25,9 +25,11 @@ def tmp_settings(tmp_path, monkeypatch):
     get_settings.cache_clear()
     monkeypatch.setenv("CRUCIBLE_OFFLINE", "true")
     monkeypatch.setenv("CRUCIBLE_DATA_DIR", str(tmp_path))
+    # Without this the suite writes scenario files into the real library.
+    monkeypatch.setenv("CRUCIBLE_LIBRARY_DIR", str(tmp_path / "scenarios"))
     monkeypatch.delenv("FPT_API_KEY", raising=False)
     monkeypatch.delenv("MKP_API_KEY", raising=False)
-    s = Settings(offline=True, data_dir=tmp_path)
+    s = Settings(offline=True, data_dir=tmp_path, library_dir=tmp_path / "scenarios")
     s.ensure_dirs()
     yield s
     get_settings.cache_clear()

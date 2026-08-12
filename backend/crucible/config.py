@@ -107,6 +107,11 @@ class Settings(BaseSettings):
     # --- storage ------------------------------------------------------------
     data_dir: Path = REPO_ROOT / "data"
 
+    # Where saved scenarios are written as files. Deliberately *outside*
+    # `data_dir`: everything under data/ is derived and disposable, while a
+    # scenario is source — you open it in an editor, diff it, and commit it.
+    library_dir: Path = PROJECT_ROOT / "scenarios"
+
     # --- offline ------------------------------------------------------------
     # When true (or when no key is present) all model calls are served by the
     # deterministic scripted backend in llm/offline.py. The whole pipeline
@@ -148,7 +153,8 @@ class Settings(BaseSettings):
         return self.data_dir / "crucible.db"
 
     def ensure_dirs(self) -> None:
-        for d in (self.data_dir, self.scenarios_dir, self.runs_dir, self.worlds_dir):
+        for d in (self.data_dir, self.scenarios_dir, self.runs_dir,
+                  self.worlds_dir, self.library_dir):
             d.mkdir(parents=True, exist_ok=True)
 
 

@@ -1,0 +1,20 @@
+#!/bin/sh
+# Crucible, launched from the repository root.
+#
+#   ./crucible serve
+#   ./crucible run scenarios/github-fork-hijack.md -v
+#
+# This exists because `uv run python -m crucible` from the root cannot be
+# relied on. uv installs workspace members as editable — a one-line `.pth`
+# file in the virtualenv pointing at backend/ — and on macOS uv marks
+# everything inside .venv with the BSD `hidden` flag, which CPython 3.11+
+# silently refuses to read .pth files from. The package then resolves as
+# "No module named crucible" while `uv pip list` cheerfully reports it
+# installed. Setting PYTHONPATH sidesteps .pth entirely, costs nothing when
+# the editable install does work, and keeps the working directory at the root
+# so paths on the command line mean what they say.
+set -e
+root=$(cd -- "$(dirname -- "$0")" && pwd)
+PYTHONPATH="$root/backend${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH
+exec uv run --quiet --project "$root" python -m crucible "$@"

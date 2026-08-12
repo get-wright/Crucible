@@ -37,21 +37,64 @@ const SEVERITY = Object.keys(VERDICTS);
  * long run is context, the end is the finding. */
 const MAX_STEPS = 400;
 
-const state = { taxonomy: null, scenarioId: null, suiteId: null, source: null, trimmed: 0 };
+const state = {
+  taxonomy: null, scenarioId: null, scenarioPath: "",
+  // `suiteId` is what the Run screen is streaming; `resultId` is what the
+  // Result screen has loaded. They are usually the same suite and must still
+  // be tracked apart — the router uses each to decide whether its screen
+  // already holds what the URL asks for.
+  suiteId: null, resultId: null, runId: null,
+  source: null, trimmed: 0,
+};
 
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const pct = (x) => `${Math.round((x || 0) * 100)}%`;
 const icon = (id, size = 16) =>
   `<svg width="${size}" height="${size}" viewBox="0 0 20 20" aria-hidden="true"><use href="#${id}"/></svg>`;
 
+/* Failures carry the server's reason, not the status text.
+ *
+ * A rejection here is nearly always something the user can act on — a line
+ * number, a missing field, a path that does not exist. FastAPI puts it in
+ * `detail`, which for the validation routes is an object; reading only the
+ * string case turned every one of those into "Unprocessable Content", and the
+ * findings that came with it were dropped on the floor. */
+class ApiError extends Error {
+  constructor(message, { status, detail } = {}) {
+    super(message);
+    this.status = status;
+    this.detail = detail;
+  }
+  /** The findings the server sent back, if it sent any. */
+  get findings() {
+    const v = this.detail && this.detail.validation;
+    return v ? [...(v.errors || []), ...(v.warnings || [])] : [];
+  }
+}
+
 const api = async (path, opts = {}) => {
-  const r = await fetch(path, {
-    headers: { "Content-Type": "application/json" },
-    ...opts,
-    body: opts.body ? JSON.stringify(opts.body) : undefined,
-  });
+  let r;
+  try {
+    r = await fetch(path, {
+      headers: { "Content-Type": "application/json" },
+      ...opts,
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+    });
+  } catch {
+    throw new ApiError("the server is not responding — is it still running?");
+  }
   const body = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(typeof body.detail === "string" ? body.detail : r.statusText);
+  if (!r.ok) {
+    const d = body.detail;
+    const message =
+      (typeof d === "string" && d) ||
+      (d && typeof d.message === "string" && d.message) ||
+      // FastAPI's own 422 shape, when a field fails the request model.
+      (Array.isArray(d) && d[0] && `${(d[0].loc || []).slice(-1)}: ${d[0].msg}`) ||
+      r.statusText ||
+      `request failed (${r.status})`;
+    throw new ApiError(message, { status: r.status, detail: d });
+  }
   return body;
 };
 
@@ -77,8 +120,18 @@ function route() {
   $$(".screen").forEach((s) => (s.hidden = s.id !== `s-${name}`));
   document.title = name === "library" ? "Crucible" : `Crucible · ${name}`;
 
-  if (name === "result" && param && param !== state.suiteId) openSuite(param, { push: false });
-  if (name === "run" && param && param !== state.runId) replayRun(param, { push: false });
+  if (name === "result" && param && param !== state.resultId) openSuite(param, { push: false });
+  /* `#/run/<id>` names either a suite or a single run, and they are read back
+   * differently: a suite is attached to live (its stream replays from the
+   * first event, so the URL works whether you opened it a second ago or are
+   * reconnecting after a refresh), while a run id is a finished trajectory
+   * read from disk. Treating every param as a run id meant the navigation
+   * `startRun` performs raced its own live setup and replaced it with "No
+   * stored trajectory for that run." */
+  if (name === "run" && param && param !== state.runId && param !== state.suiteId) {
+    if (param.startsWith("suite_")) attachSuite(param);
+    else replayRun(param, { push: false });
+  }
   if (name === "author" && param && param !== state.scenarioId) openScenario(param, { push: false });
 }
 window.addEventListener("hashchange", route);
@@ -196,7 +249,7 @@ async function loadLibrary() {
   } else {
     host.innerHTML =
       `<p class="eyebrow" style="margin-bottom:var(--s-2)">${scenarios.length} scenario${scenarios.length === 1 ? "" : "s"}</p>` +
-      `<div class="table-wrap" tabindex="0" role="region" aria-label="Scenarios"><table class="rows"><thead><tr><th scope="col">Scenario</th><th scope="col">Tags</th><th scope="col">Origin</th><th scope="col"><span class="sr">Actions</span></th></tr></thead>` +
+      `<div class="table-wrap" tabindex="0" role="region" aria-label="Scenarios"><table class="rows"><thead><tr><th scope="col">Scenario</th><th scope="col">Tags</th><th scope="col">Origin</th><th scope="col">File</th><th scope="col"><span class="sr">Actions</span></th></tr></thead>` +
       `<tbody class="stagger">` +
       scenarios
         .map(
@@ -205,6 +258,7 @@ async function loadLibrary() {
               ${s.valid ? "" : `<span class="pill bad">${icon("i-alert", 11)} invalid</span>`}</td>
             <td class="muted mono">${esc([s.tags.attack_pattern, s.tags.owasp_agentic, s.tags.industry].filter(Boolean).join(" · "))}</td>
             <td class="muted mono">${esc(s.origin)}</td>
+            <td class="muted mono">${s.path ? esc(s.path) : "—"}</td>
             <td class="num"><button class="link" data-run="${esc(s.id)}">run ${icon("i-arrow", 14)}</button></td>
           </tr>`
         )
@@ -213,7 +267,43 @@ async function loadLibrary() {
     $$("[data-open]", host).forEach((b) => b.addEventListener("click", () => go("author", b.dataset.open)));
     $$("[data-run]", host).forEach((b) => b.addEventListener("click", () => startRun({ scenario_id: b.dataset.run })));
   }
+  loadFiles();
   loadSuites();
+}
+
+/* The scenario directory itself.
+ *
+ * The table above lists database rows; this lists the files. They are usually
+ * the same set, but not always — a scenario pulled from git, copied in, or
+ * written in an editor has no row until something reads it, and it is still
+ * perfectly runnable. Listing the directory is what stops the browser from
+ * quietly disagreeing with `ls`. */
+async function loadFiles() {
+  const host = $("#lib-files");
+  const body = await api("/library").catch(() => null);
+  if (!body || !body.files.length) {
+    host.innerHTML = `<p class="empty">No scenario files yet. Saving one writes it here.</p>`;
+    return;
+  }
+  const kb = (n) => `${Math.max(1, Math.round(n / 1024))} kB`;
+  host.innerHTML =
+    `<p class="eyebrow" style="margin-bottom:var(--s-2)">${esc(body.dir)}</p>` +
+    `<div class="table-wrap" tabindex="0" role="region" aria-label="Scenario files">` +
+    `<table class="rows"><thead><tr><th scope="col">File</th><th scope="col" class="num">Size</th>` +
+    `<th scope="col"><span class="sr">Actions</span></th></tr></thead><tbody>` +
+    body.files
+      .map(
+        (f) => `<tr>
+          <td class="mono">${esc(f.path)}</td>
+          <td class="num muted">${kb(f.bytes)}</td>
+          <td class="num"><button class="link" data-file="${esc(f.path)}">run ${icon("i-arrow", 14)}</button></td>
+        </tr>`
+      )
+      .join("") +
+    `</tbody></table></div>`;
+  $$("[data-file]", host).forEach((b) =>
+    b.addEventListener("click", () => startRun({ path: b.dataset.file }))
+  );
 }
 
 async function loadSuites() {
@@ -248,10 +338,35 @@ async function openScenario(id, { push = true } = {}) {
   const row = await api(`/scenarios/${id}`).catch(() => null);
   if (!row) return;
   state.scenarioId = id;
+  state.scenarioPath = row.path || "";
   $("#editor").value = row.yaml;
   $("#editor-section").hidden = false;
+  showFile();
   if (push) go("author", id);
   validateNow();
+}
+
+/* Where the scenario lives on disk.
+ *
+ * A scenario is a file, and the run command takes that file — so the path is
+ * shown rather than implied. Without it the browser looks like a place things
+ * disappear into, and there is no way to tell that Save produced an artifact
+ * you can open, diff or hand to someone else. */
+function showFile(note = "") {
+  const host = $("#file-line");
+  if (!host) return;
+  if (!state.scenarioPath) {
+    host.innerHTML = `<span class="muted">Not saved to a file yet.</span>`;
+    $("#run-hint").textContent = "";
+    return;
+  }
+  host.innerHTML =
+    `<span class="muted">Saved as</span> <code>scenarios/${esc(state.scenarioPath)}</code>` +
+    (state.scenarioId
+      ? ` <a class="link" href="/scenarios/${esc(state.scenarioId)}/file" download>download</a>`
+      : "") +
+    (note ? ` <span class="muted">· ${esc(note)}</span>` : "");
+  $("#run-hint").textContent = `Or from a terminal: crucible run scenarios/${state.scenarioPath}`;
 }
 
 // ── validation ───────────────────────────────────────────────────────
@@ -317,6 +432,11 @@ async function loadRubricNote(yaml) {
 $("#btn-blank").addEventListener("click", () => {
   $("#editor-section").hidden = false;
   if (!editor.value.trim()) editor.value = TEMPLATE;
+  // A blank draft is a new scenario, not an edit of whatever was open — so it
+  // gets its own file on the first save rather than overwriting that one.
+  state.scenarioId = null;
+  state.scenarioPath = "";
+  showFile();
   validateNow();
   $("#editor-section").scrollIntoView({ behavior: "smooth", block: "start" });
 });
@@ -347,7 +467,9 @@ $("#btn-generate").addEventListener("click", async () => {
     });
     editor.value = res.yaml;
     state.scenarioId = res.scenario_id || null;
+    state.scenarioPath = res.path || "";
     renderFindings(res.validation);
+    showFile(res.file_error || "");
     await loadRubricNote(res.yaml);
     const c = res.critique || {};
     const fixed = [...(c.defects || []), ...(c.tells || [])];
@@ -364,27 +486,84 @@ $("#btn-generate").addEventListener("click", async () => {
   }
 });
 
+/* Saving writes the file.
+ *
+ * Once a scenario has an id it is updated in place — over the same file it
+ * came from — instead of posting a new one, which used to leave a fresh copy
+ * behind on every click and made the library fill up with near-identical rows.
+ *
+ * A draft that does not validate still saves. Fixing it is the whole job of
+ * this screen, and refusing to keep it means losing the draft you were about
+ * to fix; the findings say what is wrong and the run button is what enforces
+ * validity. */
+async function saveScenario() {
+  const body = { yaml: editor.value, path: state.scenarioPath || undefined };
+  const r = state.scenarioId
+    ? await api(`/scenarios/${state.scenarioId}`, { method: "PUT", body })
+    : await api("/scenarios", { method: "POST", body });
+  state.scenarioId = r.scenario.id;
+  state.scenarioPath = r.path || "";
+  renderFindings(r.validation);
+  showFile();
+  return r;
+}
+
+function reportError(e, what) {
+  $("#val-status").innerHTML =
+    `<span class="pill bad">${icon("i-x", 11)} ${esc(what)}</span><span>${esc(e.message)}</span>`;
+  if (e.findings && e.findings.length) renderFindings(e.detail.validation);
+}
+
 $("#btn-save").addEventListener("click", async () => {
   const btn = $("#btn-save");
+  const restore = () => setTimeout(() => (btn.textContent = "Save"), 1800);
+  btn.disabled = true;
   try {
-    const r = await api("/scenarios", { method: "POST", body: { yaml: editor.value } });
-    state.scenarioId = r.scenario.id;
+    const r = await saveScenario();
     btn.textContent = "Saved";
-    setTimeout(() => (btn.textContent = "Save"), 1600);
+    showFile(r.runnable ? "" : "fix the errors before running");
     loadLibrary();
   } catch (e) {
-    btn.textContent = "Could not save";
-    setTimeout(() => (btn.textContent = "Save"), 2200);
+    btn.textContent = "Save failed";
+    reportError(e, "could not save");
+  } finally {
+    btn.disabled = false;
+    restore();
   }
 });
 
-$("#btn-run").addEventListener("click", () =>
-  startRun({
-    yaml: editor.value,
-    repeats: parseInt($("#f-repeats").value, 10) || 1,
-    control: $("#f-control").value === "yes",
-  })
-);
+/* Run saves first, then runs the saved file.
+ *
+ * The alternative — posting the editor buffer straight to the runner — means
+ * the thing that ran and the thing on disk can differ, so a result cannot be
+ * reproduced from the file it claims to come from. */
+$("#btn-run").addEventListener("click", async () => {
+  const btn = $("#btn-run");
+  const label = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spin"></span> Saving…`;
+  try {
+    const saved = await saveScenario();
+    loadLibrary();
+    if (!saved.runnable) {
+      $("#val-status").innerHTML =
+        `<span class="pill bad">${icon("i-x", 11)} cannot run</span>` +
+        `<span>saved to scenarios/${esc(saved.path)} — fix the errors above, then run</span>`;
+      return;
+    }
+    await startRun({
+      scenario_id: saved.scenario.id,
+      path: saved.path || undefined,
+      repeats: parseInt($("#f-repeats").value, 10) || 1,
+      control: $("#f-control").value === "yes",
+    });
+  } catch (e) {
+    reportError(e, "cannot run");
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = label;
+  }
+});
 
 // ── running ──────────────────────────────────────────────────────────
 async function startRun(opts) {
@@ -393,9 +572,11 @@ async function startRun(opts) {
   try {
     started = await api("/suites", { method: "POST", body });
   } catch (e) {
+    // Say what actually went wrong. This used to report "fix the errors
+    // first" for every failure, including ones that had nothing to do with
+    // the scenario — an unreachable server, a missing file, a bad override.
     go("author");
-    $("#val-status").innerHTML =
-      `<span class="pill bad">${icon("i-x", 11)} cannot run</span><span>fix the errors first</span>`;
+    reportError(e, "cannot run");
     return;
   }
   state.suiteId = started.suite_id;
@@ -425,6 +606,45 @@ async function startRun(opts) {
   if (state.source) state.source.close();
   state.source = new EventSource(`/suites/${state.suiteId}/stream`);
   state.source.onmessage = (e) => handleEvent(JSON.parse(e.data));
+}
+
+/* Join a suite already under way — or one someone sent you a link to.
+ *
+ * The stream endpoint replays its whole buffer to a new subscriber, so this is
+ * the same code path for "started two seconds ago", "reconnecting after a
+ * refresh" and "opened from a pasted URL". The buffer lives in the serving
+ * process, so once it has restarted the trajectory is gone; the run is still
+ * on disk, and saying which way to go beats an empty screen. */
+async function attachSuite(suiteId) {
+  state.suiteId = suiteId;
+  state.runId = null;
+  state.trimmed = 0;
+  live = null;
+
+  const suite = await api(`/suites/${suiteId}`).catch(() => null);
+  $("#run-title").textContent = suite ? `${suite.model} · ${suite.repeats} repeat${suite.repeats === 1 ? "" : "s"}` : "Run";
+  $("#run-eyebrow").textContent = suite && suite.status === "running" ? "Running" : "Trajectory";
+  $("#run-meta").innerHTML = [suite ? suite.status : "unknown", suiteId]
+    .map((x) => `<span>${esc(x)}</span>`)
+    .join("<span>·</span>");
+  $("#run-body").innerHTML =
+    `<div class="stream" id="stream" role="log" aria-live="polite" aria-relevant="additions" aria-label="Run trajectory"></div>`;
+
+  if (state.source) state.source.close();
+  const source = new EventSource(`/suites/${suiteId}/stream`);
+  state.source = source;
+  source.onmessage = (e) => handleEvent(JSON.parse(e.data));
+  source.onerror = () => {
+    source.close();
+    if ($("#stream") && !$("#stream").children.length) {
+      $("#run-body").innerHTML =
+        `<p class="empty">This trajectory is no longer held in memory — the server has restarted since the run.` +
+        (suite ? ` <button class="link" id="to-result">See the result instead ${icon("i-arrow", 14)}</button>` : "") +
+        `</p>`;
+      const b = $("#to-result");
+      if (b) b.addEventListener("click", () => go("result", suiteId));
+    }
+  };
 }
 
 let live = null;
@@ -554,7 +774,11 @@ function handleEvent(payload) {
 
 // ── results ──────────────────────────────────────────────────────────
 async function openSuite(id, { push = true } = {}) {
-  state.suiteId = id;
+  // Tracked separately from `state.suiteId`, which says which suite the *run*
+  // screen is streaming. Sharing one key meant that after watching a run,
+  // opening its result did nothing at all: the router saw the id it already
+  // held and skipped the load, leaving "No result yet" on screen.
+  state.resultId = id;
   if (push) go("result", id);
   $("#res-body").setAttribute("aria-busy", "true");
   $("#res-body").innerHTML = skeletonRows(6);

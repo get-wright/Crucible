@@ -31,6 +31,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from ulid import ULID
 
+from . import library
 from .config import FPT_MODELS, get_settings
 from .events import Event, read_log
 from .generate import generate_scenario
@@ -121,11 +122,19 @@ class SaveScenarioRequest(BaseModel):
     name: str | None = None
     origin: str = "authored"
     brief: str = ""
+    #: Where to write it, relative to the scenario library. Omit to derive a
+    #: filename from the scenario's name.
+    path: str | None = None
+    #: Set false to record the scenario without putting a file on disk.
+    write_file: bool = True
 
 
 class RunRequest(BaseModel):
     scenario_id: str | None = None
     yaml: str | None = None
+    #: A path in the scenario library — run the file as it is on disk. This is
+    #: the same artifact `crucible run <file>` takes.
+    path: str | None = None
     model: str | None = None
     repeats: int | None = None
     control: bool = False
@@ -255,10 +264,19 @@ async def generate(req: GenerateRequest) -> dict[str, Any]:
     # saved one with a visible problem list.
     if req.save and result.ir is not None:
         sid = f"scn_{ULID()}"
+        name = result.ir.scenario.name or "Untitled"
+        path = ""
+        try:
+            target = library.write(result.yaml, directory=settings.library_dir, name=name)
+            path = library.relative(settings.library_dir, target)
+        except (library.LibraryError, OSError) as e:
+            # A draft that cannot be filed is still a draft worth returning:
+            # it is in the response and in the database either way.
+            payload["file_error"] = str(e)
         store.save_scenario(
             scenario_id=sid,
             scenario_hash=result.validation.scenario_hash,
-            name=result.ir.scenario.name or "Untitled",
+            name=name,
             yaml_text=result.yaml,
             tags=result.ir.scenario.tags,
             model=result.ir.scenario.model,
@@ -267,31 +285,95 @@ async def generate(req: GenerateRequest) -> dict[str, Any]:
             brief=req.brief,
             valid=result.validation.ok,
             findings=[f.as_dict() for f in result.validation.findings],
+            path=path,
         )
         payload["scenario_id"] = sid
+        payload["path"] = path
     return payload
 
 
-@app.post("/scenarios")
-def save_scenario(req: SaveScenarioRequest) -> dict[str, Any]:
+def _summarise(result: Any) -> str:
+    """The findings as one line a person can act on.
+
+    `HTTPException(422, {...})` serialises the dict into `detail`, and a
+    browser showing `detail` verbatim shows an object. Every rejection here
+    carries a `message` alongside the structured findings so the caller always
+    has something to print.
+    """
+    errors = result.errors
+    if not errors:
+        return "the scenario did not validate"
+    head = errors[0]
+    rest = f" (+{len(errors) - 1} more)" if len(errors) > 1 else ""
+    return f"line {head.line}: {head.message}{rest}"
+
+
+def _persist(
+    req: SaveScenarioRequest,
+    *,
+    scenario_id: str,
+    existing: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Validate, write the file, record the row.
+
+    A draft that does not validate is still saved. The whole point of the
+    editor is to fix such a draft, and one that vanishes when you try to keep
+    it — which is what the previous 422 did — costs more than a scenario
+    sitting on disk with a visible problem list. Only YAML too broken to parse
+    at all is refused, because then there is no name to file it under.
+    """
     result = validate_source(req.yaml)
     if result.ir is None:
-        raise HTTPException(422, {"validation": result.as_dict()})
-    sid = f"scn_{ULID()}"
+        raise HTTPException(422, {
+            "message": _summarise(result) or "the scenario could not be parsed",
+            "validation": result.as_dict(),
+        })
+
+    prior = existing or {}
+    name = req.name or result.ir.scenario.name or prior.get("name") or "Untitled"
+
+    stored_path = ""
+    if req.write_file:
+        try:
+            target = library.write(
+                req.yaml,
+                directory=settings.library_dir,
+                name=name,
+                # Re-save an existing scenario over the file it came from
+                # rather than leaving a trail of near-identical copies.
+                path=req.path or prior.get("path") or None,
+            )
+        except (library.LibraryError, OSError) as e:
+            raise HTTPException(422, {"message": f"could not write the file: {e}"}) from e
+        stored_path = library.relative(settings.library_dir, target)
+
     row = store.save_scenario(
-        scenario_id=sid,
+        scenario_id=scenario_id,
         scenario_hash=result.scenario_hash,
-        name=req.name or result.ir.scenario.name or "Untitled",
+        name=name,
         yaml_text=req.yaml,
         tags=result.ir.scenario.tags,
         model=result.ir.scenario.model,
         judge_model=result.ir.scenario.judge_model or "",
-        origin=req.origin,
-        brief=req.brief,
+        origin=prior.get("origin") or req.origin,
+        brief=req.brief or prior.get("brief") or "",
         valid=result.ok,
         findings=[f.as_dict() for f in result.findings],
+        path=stored_path,
     )
-    return {"scenario": row, "validation": result.as_dict()}
+    return {
+        "scenario": row,
+        "validation": result.as_dict(),
+        "path": row.get("path") or stored_path,
+        # The file is saved but the scenario will not run until it validates.
+        # Saying so here is what lets the UI report the difference.
+        "runnable": result.ok,
+    }
+
+
+@app.post("/scenarios")
+def save_scenario(req: SaveScenarioRequest) -> dict[str, Any]:
+    return _persist(req, scenario_id=f"scn_{ULID()}")
 
 
 @app.get("/scenarios")
@@ -339,23 +421,37 @@ def update_scenario(scenario_id: str, req: SaveScenarioRequest) -> dict[str, Any
     existing = store.get_scenario(scenario_id)
     if existing is None:
         raise HTTPException(404, "no such scenario")
-    result = validate_source(req.yaml)
-    if result.ir is None:
-        raise HTTPException(422, {"validation": result.as_dict()})
-    row = store.save_scenario(
-        scenario_id=scenario_id,
-        scenario_hash=result.scenario_hash,
-        name=req.name or result.ir.scenario.name or existing["name"],
-        yaml_text=req.yaml,
-        tags=result.ir.scenario.tags,
-        model=result.ir.scenario.model,
-        judge_model=result.ir.scenario.judge_model or "",
-        origin=existing["origin"],
-        brief=existing.get("brief") or "",
-        valid=result.ok,
-        findings=[f.as_dict() for f in result.findings],
-    )
-    return {"scenario": row, "validation": result.as_dict()}
+    return _persist(req, scenario_id=scenario_id, existing=existing)
+
+
+@app.get("/scenarios/{scenario_id}/file")
+def download_scenario(scenario_id: str) -> FileResponse:
+    """The scenario as the file it is — the thing `crucible run` takes."""
+    row = store.get_scenario(scenario_id)
+    if row is None:
+        raise HTTPException(404, "no such scenario")
+    if not row.get("path"):
+        raise HTTPException(404, "this scenario has no file on disk; save it first")
+    try:
+        target = library.resolve(settings.library_dir, row["path"])
+    except library.LibraryError as e:
+        raise HTTPException(404, str(e)) from e
+    if not target.is_file():
+        raise HTTPException(404, f"the file is gone: {row['path']}")
+    return FileResponse(target, media_type="text/markdown", filename=target.name)
+
+
+@app.get("/library")
+def library_files() -> dict[str, Any]:
+    """Scenario files on disk, whoever put them there.
+
+    Read from the filesystem rather than the database, so a file arriving by
+    `git pull` or dropped in by hand is part of the library immediately.
+    """
+    return {
+        "dir": str(settings.library_dir),
+        "files": library.listing(settings.library_dir),
+    }
 
 
 @app.delete("/scenarios/{scenario_id}")
@@ -371,24 +467,37 @@ def delete_scenario(scenario_id: str) -> dict[str, Any]:
 @app.post("/suites")
 async def start_suite(req: RunRequest, background: BackgroundTasks) -> dict[str, Any]:
     """Queue a suite. Returns immediately; watch it via the stream endpoint."""
-    if req.yaml:
-        text, scenario_id = req.yaml, ""
+    # Precedence is deliberate: an explicit path or id names a saved artifact,
+    # so it wins over whatever happens to be in an editor buffer.
+    if req.path:
+        try:
+            text = library.read(settings.library_dir, req.path)
+        except library.LibraryError as e:
+            raise HTTPException(404, {"message": str(e)}) from e
+        except OSError as e:
+            raise HTTPException(404, {"message": f"could not read {req.path}: {e}"}) from e
+        scenario_id = req.scenario_id or ""
     elif req.scenario_id:
         row = store.get_scenario(req.scenario_id)
         if row is None:
-            raise HTTPException(404, "no such scenario")
+            raise HTTPException(404, {"message": "no such scenario"})
         text, scenario_id = row["yaml"], req.scenario_id
+    elif req.yaml:
+        text, scenario_id = req.yaml, ""
     else:
-        raise HTTPException(422, "provide either `scenario_id` or `yaml`")
+        raise HTTPException(422, {"message": "provide one of `path`, `scenario_id` or `yaml`"})
 
     try:
         text, _ = apply_overrides(text, req.overrides)
     except OverrideError as e:
-        raise HTTPException(422, f"bad override: {e}") from e
+        raise HTTPException(422, {"message": f"bad override: {e}"}) from e
     result = validate_source(text)
 
     if not result.ok or result.ir is None:
-        raise HTTPException(422, {"validation": result.as_dict()})
+        raise HTTPException(422, {
+            "message": _summarise(result),
+            "validation": result.as_dict(),
+        })
 
     ir = result.ir
     suite_id = f"suite_{ULID()}"

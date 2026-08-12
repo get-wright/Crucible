@@ -112,6 +112,14 @@
         <div id="lib-list" aria-busy="true"></div>
       </section>
 
+      <!-- Read from the directory, not the database: a scenario that arrived
+           by `git pull` or was written by hand is part of the library the
+           moment the file is there. -->
+      <section>
+        <h2>Files on disk</h2>
+        <div id="lib-files"></div>
+      </section>
+
       <section>
         <h2>Recent suites</h2>
         <div id="lib-suites"></div>
@@ -172,6 +180,11 @@
               </button>
               <button class="btn ghost" id="btn-save">Save</button>
             </div>
+            <!-- A scenario is a file. Saying where it went is what makes the
+                 browser and the command line the same workflow rather than
+                 two that happen to share a format. -->
+            <p class="file-line" id="file-line" role="status" aria-live="polite"></p>
+            <p class="hint mono" id="run-hint"></p>
             <div class="fields" style="grid-template-columns:1fr 1fr;margin-top:var(--s-3)">
               <div class="field">
                 <label for="f-repeats">repeats</label>

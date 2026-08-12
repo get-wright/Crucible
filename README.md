@@ -40,6 +40,16 @@ The Python project lives in `backend/`, but the repo root is a uv workspace,
 so `uv` works from either directory. Everything below is written from the repo
 root; prefix with `cd backend` if you prefer to work in there.
 
+There is a `./crucible` launcher at the root, and it is the reliable way in:
+
+```bash
+./crucible info                    # same as: uv run python -m crucible info
+```
+
+Use it rather than `uv run python -m crucible` if the latter ever reports
+`No module named crucible` — see [§7](#7-troubleshooting) for why that happens
+on macOS. Both forms are shown below; they run exactly the same code.
+
 **Add a model key.** Crucible runs on the FPT AI Marketplace. Either export it:
 
 ```bash
@@ -85,7 +95,7 @@ terminal — every screen has a CLI equivalent (§6).
 **Verify the install:**
 
 ```bash
-uv run pytest                # 170 tests, no network or API key required
+uv run pytest                # 196 tests, no network or API key required
 ```
 
 `uv.lock` is committed, so an install here resolves to the same versions this
@@ -106,11 +116,19 @@ generously, and Crucible flags it when they match.
 
 | Path | What |
 |---|---|
+| `scenarios/*.md` | **your scenarios** — the source you edit and commit |
 | `backend/data/runs/*.jsonl` | one event log per run |
 | `backend/data/worlds/*.json` | seeded worlds, cached by scenario hash + seed |
-| `backend/data/crucible.db` | scenarios, runs, verdicts |
+| `backend/data/crucible.db` | an index of scenarios, runs and verdicts |
 
-All of it is regenerable and none of it is in git.
+Only the first one matters. Everything under `backend/data/` is derived,
+regenerable, and not in git; delete it and you lose nothing but time.
+
+`scenarios/` is where the interface saves. A scenario is a file — the same file
+whether you generated it in the browser, wrote it by hand, or pulled it from
+git — and `crucible run` takes that file. There is no export step and no format
+that only the browser can read. Point it somewhere else with
+`CRUCIBLE_LIBRARY_DIR`.
 
 ## 2. Your first run
 
@@ -405,7 +423,9 @@ can be pasted to someone else and the browser Back button behaves.
 Four screens:
 
 - **Library** — every scenario, filterable by taxonomy facet, with recent
-  suites and their two headline rates side by side.
+  suites and their two headline rates side by side, and the contents of the
+  `scenarios/` directory listed separately so files you added by hand or pulled
+  from git are visible and runnable without an import step.
 - **New** — pick tags, choose an attack pattern (or let the tags choose), write
   a brief, generate. Or write the YAML yourself. Either way the editor
   validates as you type and every finding is clickable: clicking one puts your
@@ -418,6 +438,19 @@ Four screens:
 - **Result** — the verdict and why, the three axes in the order that decides
   it, every judge criterion with its reasoning and cited events, and a strip of
   one cell per run.
+
+**Save writes a file.** Both buttons under the editor put the scenario in
+`scenarios/` and tell you the filename; the screen then shows the exact command
+that runs it. Saving an existing scenario rewrites the file it came from rather
+than leaving a copy behind, and **Run it** saves before it runs — so the thing
+that ran and the thing on disk can never differ, and a result is always
+reproducible from the file it names.
+
+A draft that does not validate still saves. Fixing it is what the editor is
+for, and refusing to keep it means losing the draft you were about to fix; the
+findings list says what is wrong and **Run it** is what insists on a clean
+scenario. Only YAML too broken to parse at all is refused, because then there
+is no name to file it under.
 
 Design constraints worth knowing, because they are load-bearing rather than
 decorative:
@@ -454,11 +487,13 @@ GET  /rubric                      # every judge criterion available
 POST /scenarios/rubric            # what a given scenario would be graded on
 POST /scenarios/validate          # {"yaml": "..."} -> line-anchored findings
 POST /scenarios/generate          # {"tags": {...}, "brief": "..."}
-POST /scenarios                   # save; also GET/PUT/DELETE /scenarios/{id}
+POST /scenarios                   # save to a file; also PUT/GET/DELETE /scenarios/{id}
+GET  /scenarios/{id}/file         # the scenario as the .md file it is
+GET  /library                     # what is actually in the scenarios/ directory
 GET  /scenarios?industry=healthcare&attack_pattern=tool_poisoning
 
 # running
-POST /suites                      # {"scenario_id": "...", "repeats": 10, "control": true}
+POST /suites                      # {"path": "my-scenario.md", "repeats": 10, "control": true}
 GET  /suites/{id}/stream          # live SSE: every event as it happens
 GET  /suites/{id}                 # verdicts + metrics when finished
 
@@ -467,8 +502,13 @@ GET  /runs/{id}/trajectory        # replayable transcript
 GET  /comparison?scenario_hash=…  # model vs model
 ```
 
-`POST /suites` returns immediately with a `suite_id`; the run happens in the
-background. Watch it live:
+`POST /suites` takes one of three things, in this order of precedence: a `path`
+into the scenario directory (runs the file as it is on disk — the same artifact
+`crucible run` takes), a `scenario_id`, or raw `yaml`. A path that points
+outside the directory is refused.
+
+It returns immediately with a `suite_id`; the run happens in the background.
+Watch it live:
 
 ```bash
 curl -N http://127.0.0.1:8000/suites/suite_01ABC.../stream
@@ -532,6 +572,29 @@ exact text that ran.
 
 ## 7. Troubleshooting
 
+**`No module named crucible`, but `uv pip list` says it's installed** — use
+`./crucible` instead of `uv run python -m crucible`, and read on if you want to
+know why.
+
+uv installs workspace members as *editable*: rather than copying the package
+into the virtualenv it drops a one-line `.pth` file there pointing back at
+`backend/`, which Python reads at startup and appends to its import path. On
+macOS, uv also marks everything inside `.venv` with the BSD `hidden` file flag
+— and CPython 3.11 and later **silently skip hidden `.pth` files**. So the
+pointer is never read, the package is never found, and the two tools disagree
+about reality: `uv pip list` reports it installed because the metadata is
+there, while the import fails because the path is not.
+
+You can see the flag with `ls -lO .venv/lib/python3.12/site-packages/*.pth`
+(look for `hidden`), and confirm the skip with
+`python -v -c pass 2>&1 | grep hidden`. Clearing it with `chflags nohidden`
+works until the next `uv run`, which sets it again. Setting `PYTHONPATH` skips
+`.pth` resolution altogether, which is all the launcher does:
+
+```sh
+PYTHONPATH=backend uv run python -m crucible serve      # ./crucible serve
+```
+
 **"model is not available"** — the scenario names a model this provider doesn't
 serve. It's a warning, not an error: the run substitutes a configured default
 and records the substitution. Set `model:` to one of the four listed above to
@@ -557,18 +620,20 @@ fast. Raise `--concurrency`, or use `--no-judge` while iterating on a scenario.
 ## 8. Where things are
 
 ```
+crucible                 the launcher — ./crucible <command>
 example-scenario.md      a complete worked scenario
 SCENARIO_SPEC.md         every field, and the rules the validator enforces
 PLATFORM_PLAN.md         architecture and the research behind it
-scenarios/               imported scenarios
+scenarios/               your scenario files — what the interface saves
 backend/
   README.md              how the backend works and why
   PROVIDER_NOTES.md      measured provider behaviour — read before changing model calls
+  crucible/library.py    scenarios on disk: filenames, containment, atomic writes
   data/runs/*.jsonl      one event log per run
-  data/crucible.db       scenarios, runs, verdicts
+  data/crucible.db       an index of scenarios, runs and verdicts
 ```
 
-Run the tests with `uv run pytest` — 133 tests, no network or API
+Run the tests with `uv run pytest` — 196 tests, no network or API
 key required.
 
 ## What isn't built

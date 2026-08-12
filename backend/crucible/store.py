@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS scenarios (
   brief          TEXT,
   valid          INTEGER NOT NULL DEFAULT 1,
   findings       TEXT NOT NULL DEFAULT '[]',
+  path           TEXT,
   created_at     TEXT NOT NULL,
   updated_at     TEXT NOT NULL
 );
@@ -85,6 +86,19 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
+#: Columns added after the first release. `CREATE TABLE IF NOT EXISTS` does
+#: nothing to a table that already exists, so a database made by an older build
+#: keeps its old shape until it is widened here.
+_ADDED_COLUMNS = (("scenarios", "path", "TEXT"),)
+
+
+def _migrate(c: sqlite3.Connection) -> None:
+    for table, column, decl in _ADDED_COLUMNS:
+        present = {r["name"] for r in c.execute(f"PRAGMA table_info({table})")}
+        if column not in present:
+            c.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+
+
 class Store:
     def __init__(self, settings: Settings | None = None, path: Path | None = None):
         self.s = settings or get_settings()
@@ -93,6 +107,7 @@ class Store:
         self._local = threading.local()
         with self._conn() as c:
             c.executescript(SCHEMA)
+            _migrate(c)
 
     def _conn(self) -> sqlite3.Connection:
         # One connection per thread: SQLite objects are not shareable across
@@ -138,23 +153,27 @@ class Store:
         brief: str = "",
         valid: bool = True,
         findings: list[dict[str, Any]] | None = None,
+        path: str = "",
     ) -> dict[str, Any]:
         now = _now()
         with self._conn() as c:
             c.execute(
                 """INSERT INTO scenarios
                    (id, scenario_hash, name, yaml, tags, model, judge_model, origin,
-                    brief, valid, findings, created_at, updated_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    brief, valid, findings, path, created_at, updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                    ON CONFLICT(id) DO UPDATE SET
                      scenario_hash=excluded.scenario_hash, name=excluded.name,
                      yaml=excluded.yaml, tags=excluded.tags, model=excluded.model,
                      judge_model=excluded.judge_model, valid=excluded.valid,
-                     findings=excluded.findings, updated_at=excluded.updated_at""",
+                     findings=excluded.findings, updated_at=excluded.updated_at,
+                     -- An update that did not write a file keeps the file the
+                     -- row already points at, rather than forgetting it.
+                     path=COALESCE(NULLIF(excluded.path, ''), scenarios.path)""",
                 (
                     scenario_id, scenario_hash, name, yaml_text, json.dumps(tags),
                     model, judge_model, origin, brief, int(valid),
-                    json.dumps(findings or []), now, now,
+                    json.dumps(findings or []), path, now, now,
                 ),
             )
         return self.get_scenario(scenario_id) or {}
@@ -344,6 +363,7 @@ def _scenario_row(row: sqlite3.Row) -> dict[str, Any]:
     d["tags"] = json.loads(d.get("tags") or "{}")
     d["findings"] = json.loads(d.get("findings") or "[]")
     d["valid"] = bool(d.get("valid"))
+    d["path"] = d.get("path") or ""
     return d
 
 

@@ -131,13 +131,14 @@ def test_store_scenario_crud(tmp_settings, example_yaml):
 def api(tmp_path, monkeypatch):
     monkeypatch.setenv("CRUCIBLE_OFFLINE", "true")
     monkeypatch.setenv("CRUCIBLE_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("CRUCIBLE_LIBRARY_DIR", str(tmp_path / "scenarios"))
     monkeypatch.delenv("FPT_API_KEY", raising=False)
     monkeypatch.delenv("MKP_API_KEY", raising=False)
     import crucible.api as api_module
     from crucible.config import get_settings
 
     get_settings.cache_clear()
-    s = Settings(offline=True, data_dir=tmp_path)
+    s = Settings(offline=True, data_dir=tmp_path, library_dir=tmp_path / "scenarios")
     s.ensure_dirs()
     monkeypatch.setattr(api_module, "settings", s)
     monkeypatch.setattr(api_module, "store", Store(s))
