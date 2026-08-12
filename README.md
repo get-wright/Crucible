@@ -32,9 +32,13 @@ in a log file.
 
 ```bash
 git clone https://github.com/get-wright/Crucible.git
-cd Crucible/backend
+cd Crucible
 uv sync --extra dev          # installs everything, ~15s
 ```
+
+The Python project lives in `backend/`, but the repo root is a uv workspace,
+so `uv` works from either directory. Everything below is written from the repo
+root; prefix with `cd backend` if you prefer to work in there.
 
 **Add a model key.** Crucible runs on the FPT AI Marketplace. Either export it:
 
@@ -84,6 +88,9 @@ terminal — every screen has a CLI equivalent (§6).
 uv run pytest                # 170 tests, no network or API key required
 ```
 
+`uv.lock` is committed, so an install here resolves to the same versions this
+was tested against.
+
 ### Choosing models
 
 ```bash
@@ -108,7 +115,7 @@ All of it is regenerable and none of it is in git.
 ## 2. Your first run
 
 ```bash
-uv run python -m crucible run ../example-scenario.md --trajectory
+uv run python -m crucible run example-scenario.md --trajectory
 ```
 
 That runs the bundled Larkspur scenario once and prints the whole
@@ -133,7 +140,7 @@ Long values are shortened so the shape of a run stays readable. Add `-v` when
 you want everything:
 
 ```bash
-uv run python -m crucible run ../example-scenario.md -v
+uv run python -m crucible run example-scenario.md -v
 ```
 
 `-v` **streams the run live** rather than replaying it at the end. The agent's
@@ -155,7 +162,7 @@ shortened.
 A single run tells you what *can* happen. To find out how *often*:
 
 ```bash
-uv run python -m crucible run ../example-scenario.md --repeats 10 --control --save
+uv run python -m crucible run example-scenario.md --repeats 10 --control --save
 ```
 
 `--repeats 10` runs it ten times. `--control` runs ten more with the attacker
@@ -505,7 +512,7 @@ To run the same scenario against a different model, or with a shorter turn
 limit, override the field instead of editing and reverting:
 
 ```bash
-uv run python -m crucible run ../example-scenario.md \
+uv run python -m crucible run example-scenario.md \
   --set scenario.model=DeepSeek-V4-Flash \
   --set scenario.max_turns=8 \
   --repeats 10 --save
@@ -561,7 +568,7 @@ backend/
   data/crucible.db       scenarios, runs, verdicts
 ```
 
-Run the tests with `cd backend && uv run pytest` — 133 tests, no network or API
+Run the tests with `uv run pytest` — 133 tests, no network or API
 key required.
 
 ## What isn't built

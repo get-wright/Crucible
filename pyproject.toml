@@ -1,0 +1,21 @@
+# Workspace root.
+#
+# The project itself lives in `backend/`, which meant `uv sync` at the repo
+# root failed with "No `pyproject.toml` found in current directory or any
+# parent directory" — the first thing anyone does after cloning. Declaring the
+# workspace here makes uv find the member from the root, so both of these work:
+#
+#     uv sync --extra dev && uv run python -m crucible info     # from the root
+#     cd backend && uv sync --extra dev && uv run pytest        # from backend/
+[tool.uv.workspace]
+members = ["backend"]
+
+# pytest configuration lives here and *only* here. pytest treats a
+# pyproject.toml as its config file only when it contains this table, so with
+# it absent from `backend/pyproject.toml` the search walks up and lands here
+# from either directory. Two copies would drift; the earlier arrangement lost
+# `asyncio_mode` when run from the root and failed 24 async tests.
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["backend/tests"]
+pythonpath = ["backend"]
