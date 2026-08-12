@@ -30,3 +30,7 @@ dist/
 
 # Local tool settings, not project configuration
 .claude/settings.local.json
+
+# uv resolves the whole workspace into a single lockfile at the root.
+# A second one under backend/ is a leftover that silently drifts from it.
+backend/uv.lock
