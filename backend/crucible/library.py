@@ -128,7 +128,10 @@ def write(
     # Write-then-rename: a crash mid-save leaves the old file untouched rather
     # than a truncated one that no longer parses.
     tmp = target.with_name(f".{target.name}.tmp")
-    tmp.write_text(text, encoding="utf-8")
+    # Write bytes rather than text so Windows does not translate authored LF
+    # newlines to CRLF. A saved scenario must be byte-for-byte the source the
+    # browser submitted, regardless of which platform serves it.
+    tmp.write_bytes(text.encode("utf-8"))
     os.replace(tmp, target)
     return target
 

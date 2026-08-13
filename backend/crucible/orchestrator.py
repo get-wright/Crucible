@@ -84,6 +84,8 @@ async def run_suite(
     control: bool = False,
     seed: int = 0,
     model: str | None = None,
+    judge_model: str | None = None,
+    timeout_s: float = -1,
     settings: Settings | None = None,
     concurrency: int = 4,
     judge: bool = True,
@@ -99,7 +101,9 @@ async def run_suite(
     k = max(1, k)
     sid = suite_id or f"suite_{ULID()}"
     target_model, _ = resolve_model(model or ir.scenario.model, s.target_model)
-    judge_model, _ = resolve_model(ir.scenario.judge_model or "", s.judge_model)
+    resolved_judge_model, _ = resolve_model(
+        judge_model or ir.scenario.judge_model or "", s.judge_model
+    )
 
     variants = ["attack"] + (["control"] if control else [])
     jobs = [(v, i) for v in variants for i in range(k)]
@@ -107,7 +111,7 @@ async def run_suite(
     if store is not None:
         store.create_suite(
             suite_id=sid, scenario_id=scenario_id, scenario_hash=ir.scenario_hash,
-            model=target_model, judge_model=judge_model, repeats=k, control=control,
+            model=target_model, judge_model=resolved_judge_model, repeats=k, control=control,
         )
         store.update_suite(sid, status="running")
 
@@ -125,6 +129,7 @@ async def run_suite(
                 r = await execute_run(
                     ir, variant=variant, repeat=repeat, seed=seed,
                     settings=s, client=client, model=target_model,
+                    judge_model=resolved_judge_model, timeout_s=timeout_s,
                     judge=judge, on_event=on_event,
                 )
             except Exception as e:
@@ -135,7 +140,7 @@ async def run_suite(
                 try:
                     store.save_run(
                         r, suite_id=sid, scenario_id=scenario_id, model=target_model,
-                        judge_model=judge_model,
+                        judge_model=resolved_judge_model,
                         simulator_model=r.world.seed_model, seed=seed,
                     )
                 except Exception as e:  # persistence must not sink a suite

@@ -86,7 +86,7 @@ def test_resolve_adds_the_suffix_and_accepts_a_bare_stem(tmp_path):
 
 def test_write_is_atomic_and_leaves_no_temporary_behind(tmp_path):
     p = library.write("body", directory=tmp_path, name="A Scenario")
-    assert p.read_text() == "body"
+    assert p.read_text(encoding="utf-8") == "body"
     assert [x.name for x in tmp_path.iterdir()] == ["a-scenario.md"]
 
 
@@ -95,7 +95,7 @@ def test_write_to_a_path_overwrites_that_file(tmp_path):
     again = library.write("v2", directory=tmp_path, name="Thing",
                           path=library.relative(tmp_path, first))
     assert again == first
-    assert first.read_text() == "v2"
+    assert first.read_text(encoding="utf-8") == "v2"
     assert len(list(tmp_path.glob("*.md"))) == 1
 
 
@@ -109,10 +109,10 @@ def test_saving_writes_a_file_and_reports_where(api, example_yaml):
     assert path.endswith(".md")
 
     on_disk = api.library_dir / path
-    assert on_disk.read_text() == example_yaml
+    assert on_disk.read_text(encoding="utf-8") == example_yaml
     assert body["scenario"]["path"] == path
     # The file is the artifact the runner takes, so it must still validate.
-    assert validate_source(on_disk.read_text()).ok
+    assert validate_source(on_disk.read_text(encoding="utf-8")).ok
 
 
 def test_updating_rewrites_the_same_file(api, example_yaml):
@@ -123,7 +123,7 @@ def test_updating_rewrites_the_same_file(api, example_yaml):
     updated = api.put(f"/scenarios/{sid}", json={"yaml": edited}).json()
 
     assert updated["path"] == path, "an edit must not leave a second copy behind"
-    assert (api.library_dir / path).read_text() == edited
+    assert (api.library_dir / path).read_text(encoding="utf-8") == edited
     assert len(list(api.library_dir.glob("*.md"))) == 1
 
 
@@ -136,7 +136,7 @@ def test_an_invalid_draft_still_saves_and_says_it_cannot_run(api, example_yaml):
     body = r.json()
     assert body["runnable"] is False
     assert body["validation"]["errors"]
-    assert (api.library_dir / body["path"]).read_text() == broken
+    assert (api.library_dir / body["path"]).read_text(encoding="utf-8") == broken
     assert body["scenario"]["valid"] is False
 
 

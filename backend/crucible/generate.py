@@ -534,6 +534,7 @@ async def generate_scenario(
     settings: Settings | None = None,
     model: str | None = None,
     judge_model: str | None = None,
+    generator_model: str | None = None,
     repeats: int = 10,
     max_turns: int = 16,
     variation_seed: str | None = None,
@@ -549,7 +550,7 @@ async def generate_scenario(
     pass a counter to deliberately draw variants.
     """
     s = settings or get_settings()
-    gen_model = s.generator_model
+    gen_model = generator_model or s.generator_model
     target_model = model or s.target_model
     jm = judge_model or s.judge_model
 

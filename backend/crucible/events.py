@@ -193,6 +193,10 @@ class EventLog:
                 out.append({"kind": "patch", "seq": e.seq, "turn": e.turn, **e.data})
             elif e.type in ("limit.hit", "run.error", "egress.denied"):
                 out.append({"kind": "notice", "seq": e.seq, "turn": e.turn, "type": e.type, **e.data})
+            elif e.type in ("judge.start", "judge.complete"):
+                out.append({"kind": "judge_status", "seq": e.seq, "turn": e.turn, "type": e.type, **e.data})
+            elif e.type == "judge.item":
+                out.append({"kind": "judge", "seq": e.seq, "turn": e.turn, **e.data})
         flush()
         return out
 

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -105,6 +106,7 @@ class GenerateRequest(BaseModel):
     brief: str = Field(min_length=1)
     model: str | None = None
     judge_model: str | None = None
+    generator_model: str | None = None
     repeats: int = 10
     max_turns: int = 16
     variation_seed: str | None = None
@@ -136,6 +138,8 @@ class RunRequest(BaseModel):
     #: the same artifact `crucible run <file>` takes.
     path: str | None = None
     model: str | None = None
+    judge_model: str | None = None
+    timeout_s: float = -1
     repeats: int | None = None
     control: bool = False
     seed: int = 0
@@ -144,6 +148,23 @@ class RunRequest(BaseModel):
     #: `path=value` assignments applied before validation, e.g.
     #: ["scenario.model=GLM-5.2"]. Changes the scenario hash.
     overrides: list[str] = Field(default_factory=list)
+
+
+def _validate_model_overrides(**models: str | None) -> None:
+    invalid = {role: model for role, model in models.items() if model and model not in FPT_MODELS}
+    if invalid:
+        raise HTTPException(
+            422,
+            {
+                "message": f"unsupported model override(s): {invalid}",
+                "available_models": FPT_MODELS,
+            },
+        )
+
+
+def _validate_timeout(timeout_s: float) -> None:
+    if not math.isfinite(timeout_s) or (timeout_s != -1 and timeout_s <= 0):
+        raise HTTPException(422, {"message": "timeout_s must be -1 or a positive number of seconds"})
 
 
 # ── the application ────────────────────────────────────────────────────────
@@ -241,6 +262,9 @@ def validate(req: ValidateRequest) -> dict[str, Any]:
 
 @app.post("/scenarios/generate")
 async def generate(req: GenerateRequest) -> dict[str, Any]:
+    _validate_model_overrides(
+        target=req.model, judge=req.judge_model, generator=req.generator_model
+    )
     unknown = {
         f: v for f, v in req.tags.items()
         if f in VOCABULARIES and v not in VOCABULARIES[f]
@@ -252,6 +276,7 @@ async def generate(req: GenerateRequest) -> dict[str, Any]:
         result = await generate_scenario(
             tags=req.tags, brief=req.brief, settings=settings,
             model=req.model, judge_model=req.judge_model,
+            generator_model=req.generator_model,
             repeats=req.repeats, max_turns=req.max_turns,
             variation_seed=req.variation_seed, pattern=req.pattern, critique=req.critique,
         )
@@ -467,6 +492,8 @@ def delete_scenario(scenario_id: str) -> dict[str, Any]:
 @app.post("/suites")
 async def start_suite(req: RunRequest, background: BackgroundTasks) -> dict[str, Any]:
     """Queue a suite. Returns immediately; watch it via the stream endpoint."""
+    _validate_model_overrides(target=req.model, judge=req.judge_model)
+    _validate_timeout(req.timeout_s)
     # Precedence is deliberate: an explicit path or id names a saved artifact,
     # so it wins over whatever happens to be in an editor buffer.
     if req.path:
@@ -518,6 +545,8 @@ async def start_suite(req: RunRequest, background: BackgroundTasks) -> dict[str,
                 control=req.control,
                 seed=req.seed,
                 model=req.model,
+                judge_model=req.judge_model,
+                timeout_s=req.timeout_s,
                 settings=settings,
                 concurrency=req.concurrency,
                 judge=req.judge,
@@ -540,6 +569,8 @@ async def start_suite(req: RunRequest, background: BackgroundTasks) -> dict[str,
         "scenario_hash": ir.scenario_hash,
         "scenario_name": ir.scenario.name,
         "model": req.model or ir.scenario.model or settings.target_model,
+        "judge_model": req.judge_model or ir.scenario.judge_model or settings.judge_model,
+        "timeout_s": req.timeout_s,
         "repeats": req.repeats if req.repeats is not None else ir.scenario.repeats,
         "control": req.control,
         "stream": f"/suites/{suite_id}/stream",
@@ -599,6 +630,17 @@ async def stream_suite(suite_id: str, replay: bool = True) -> StreamingResponse:
 
 
 # ── results ────────────────────────────────────────────────────────────────
+
+
+@app.get("/runs")
+def list_runs(limit: int = Query(15, ge=1, le=100), offset: int = Query(0, ge=0)) -> dict[str, Any]:
+    """Newest durable run summaries for the Run screen's history grid."""
+    rows = store.list_runs(limit=limit + 1, offset=offset)
+    return {
+        "runs": rows[:limit],
+        "offset": offset,
+        "has_more": len(rows) > limit,
+    }
 
 
 @app.get("/runs/{run_id}")

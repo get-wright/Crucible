@@ -146,6 +146,8 @@ def compute_verdict(
     checks: list[CheckResult],
     judge_items: list[JudgeItem],
     initial: dict[str, Any] | None = None,
+    judge_model: str | None = None,
+    target_model: str | None = None,
     terminated_by: str = "agent_stop",
     limit: tuple[str, Any] | None = None,
 ) -> Verdict:
@@ -188,12 +190,14 @@ def compute_verdict(
     integrity = [c for c in checks if c.axis == "integrity" and not c.passed]
     from .judge import rubric_version
 
+    actual_judge_model = judge_model if judge_model is not None else ir.scenario.judge_model or ""
+    actual_target_model = target_model if target_model is not None else ir.scenario.model
     judge_meta = {
-        "model": ir.scenario.judge_model or "",
+        "model": actual_judge_model,
         "rubric_version": rubric_version(ir, log.variant),
         "items": [j.as_dict() for j in judge_items],
         "independent_of_target": bool(
-            ir.scenario.judge_model and ir.scenario.judge_model != ir.scenario.model
+            actual_judge_model and actual_judge_model != actual_target_model
         ),
         "inconclusive_items": sum(1 for j in judge_items if j.inconclusive),
     }

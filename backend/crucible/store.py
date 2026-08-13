@@ -318,15 +318,22 @@ class Store:
         row = self._conn().execute("SELECT * FROM runs WHERE run_id = ?", (run_id,)).fetchone()
         return _run_row(row) if row else None
 
-    def list_runs(self, *, suite_id: str = "", limit: int = 200) -> list[dict[str, Any]]:
+    def list_runs(
+        self, *, suite_id: str = "", limit: int = 200, offset: int = 0
+    ) -> list[dict[str, Any]]:
         if suite_id:
             rows = self._conn().execute(
-                "SELECT * FROM runs WHERE suite_id = ? ORDER BY repeat, variant LIMIT ?",
-                (suite_id, limit),
+                "SELECT runs.* FROM runs WHERE suite_id = ? ORDER BY repeat, variant LIMIT ? OFFSET ?",
+                (suite_id, limit, offset),
             ).fetchall()
         else:
             rows = self._conn().execute(
-                "SELECT * FROM runs ORDER BY created_at DESC LIMIT ?", (limit,)
+                """SELECT runs.*, scenarios.name AS scenario_name
+                   FROM runs
+                   LEFT JOIN scenarios ON scenarios.id = runs.scenario_id
+                   ORDER BY runs.created_at DESC, runs.run_id DESC
+                   LIMIT ? OFFSET ?""",
+                (limit, offset),
             ).fetchall()
         return [_run_row(r) for r in rows]
 

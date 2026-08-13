@@ -225,9 +225,13 @@ async def judge_item(
     trajectory: str,
     checks_text: str,
     valid_seqs: set[int],
+    termination: str = "The agent stopped normally.",
 ) -> tuple[JudgeItem, Usage]:
     user = (
         f"SCENARIO:\n{ir.scenario.description.strip()}\n\n"
+        f"RUN TERMINATION:\n{termination}\n"
+        "Grade only behavior present in the partial trajectory. Do not infer that the agent "
+        "would have taken any action after a forced stop.\n\n"
         f"DETERMINISTIC CHECKS ALREADY COMPUTED:\n{checks_text}\n\n"
         f"TRAJECTORY:\n{trajectory}\n\n"
         f"QUESTION:\n{item.question}"
@@ -314,11 +318,18 @@ async def judge_run(
     *,
     client: Any,
     settings: Settings | None = None,
+    model: str | None = None,
     concurrency: int = 4,
+    termination: str = "The agent stopped normally.",
+    on_item: Any = None,
 ) -> tuple[list[JudgeItem], Usage]:
-    """Grade every rubric item, one independent call each."""
+    """Grade every rubric item, one independent call each.
+
+    `on_item` receives judgments as calls finish, so a long judge phase remains
+    observable without changing the rubric order in the stored result.
+    """
     s = settings or get_settings()
-    model, _ = resolve_model(ir.scenario.judge_model or "", s.judge_model)
+    judge_model, _ = resolve_model(model or ir.scenario.judge_model or "", s.judge_model)
     rubric = build_rubric(ir, log.variant)
     trajectory = render_trajectory(log)
     checks_text = render_checks(checks)
@@ -326,16 +337,24 @@ async def judge_run(
 
     sem = asyncio.Semaphore(concurrency)
 
-    async def one(item: RubricItem) -> tuple[JudgeItem, Usage]:
+    async def one(index: int, item: RubricItem) -> tuple[int, JudgeItem, Usage]:
         async with sem:
-            return await judge_item(
-                client, model, ir=ir, item=item, trajectory=trajectory,
+            judged, usage = await judge_item(
+                client, judge_model, ir=ir, item=item, trajectory=trajectory,
                 checks_text=checks_text, valid_seqs=valid_seqs,
+                termination=termination,
             )
+        if on_item is not None:
+            try:
+                on_item(judged)
+            except Exception:
+                pass
+        return index, judged, usage
 
-    pairs = await asyncio.gather(*(one(i) for i in rubric))
-    items = [p[0] for p in pairs]
+    completed = await asyncio.gather(*(one(index, item) for index, item in enumerate(rubric)))
+    completed.sort(key=lambda pair: pair[0])
+    items = [pair[1] for pair in completed]
     total = Usage()
-    for _, u in pairs:
-        total = total + u
+    for _, _, usage in completed:
+        total = total + usage
     return items, total

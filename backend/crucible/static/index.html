@@ -7,6 +7,7 @@
 <title>Crucible</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700&amp;family=Geist+Mono:wght@400..600&amp;display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
@@ -16,7 +17,7 @@
 <!-- Icons are a single inline sprite: stroked SVG, no emoji, no icon-font
      request. Every icon that carries meaning is paired with a text label or an
      aria-label — none of them is the only way to know what something is. -->
-<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+<svg class="icon-sprite" width="0" height="0" aria-hidden="true" focusable="false">
   <defs>
     <g id="i-library" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
       <path d="M3 5.5A1.5 1.5 0 0 1 4.5 4H8l1.5 2h6A1.5 1.5 0 0 1 17 7.5v8A1.5 1.5 0 0 1 15.5 17h-11A1.5 1.5 0 0 1 3 15.5z"/>
@@ -52,6 +53,46 @@
     <g id="i-bolt" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
       <path d="M11 2.5 4.5 11H9.5l-.5 6.5L15.5 9H10.5z"/>
     </g>
+    <g id="i-user" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="10" cy="6.5" r="3"/><path d="M4.2 17c.6-3.2 2.5-5 5.8-5s5.2 1.8 5.8 5"/>
+    </g>
+    <g id="i-agent" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 5.5h12v9H8l-4 3z"/><path d="M7 9h6M7 12h3"/>
+    </g>
+    <g id="i-brain" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M8.2 4.1A3 3 0 0 0 3.8 7a2.8 2.8 0 0 0 .5 4.7A3 3 0 0 0 8.5 16H10V5.5a2.5 2.5 0 0 0-1.8-1.4ZM11.8 4.1A3 3 0 0 1 16.2 7a2.8 2.8 0 0 1-.5 4.7A3 3 0 0 1 11.5 16H10"/><path d="M6.2 8.2c1.2 0 2 .7 2 1.8M13.8 8.2c-1.2 0-2 .7-2 1.8"/>
+    </g>
+    <g id="i-tool" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m4 16 7.2-7.2M9.7 5.4l4.9 4.9M12.8 3.2l4 4-2.2 3.1-5-5z"/><path d="m3.6 12.8 3.6 3.6M2.8 15.6l1.6 1.6"/>
+    </g>
+    <g id="i-judge" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M10 3v13M5 17h10M4 6h12M6 6 3.5 11h5zM14 6l-2.5 5h5z"/>
+    </g>
+    <g id="i-state" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 6h9M11 3l3 3-3 3M16 14H7M9 11l-3 3 3 3"/>
+    </g>
+    <g id="i-activity" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M2.5 10h3l1.7-4 3.1 8 2.1-5 1.3 2H17.5"/>
+    </g>
+    <g id="i-settings" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 5h12M4 10h12M4 15h12"/><circle cx="8" cy="5" r="2" fill="var(--surface)"/><circle cx="13" cy="10" r="2" fill="var(--surface)"/><circle cx="7" cy="15" r="2" fill="var(--surface)"/>
+    </g>
+
+    <g id="art-library" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M18 28h63v42H18zM26 20h63v42M34 12h63v42"/><path d="M27 39h30M27 48h42M27 57h23M68 38h6v6h-6zM83 29h6M91 20h6"/><circle cx="22" cy="24" r="2"/>
+    </g>
+    <g id="art-author" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="22" cy="56" r="6"/><circle cx="56" cy="24" r="6"/><circle cx="91" cy="48" r="6"/><path d="m27 52 24-24M62 27l23 17M28 58l57-8M70 71l25-25 8 8-25 25-12 4zM15 70h38M15 76h28"/><path d="M56 18v-6M91 42v-7"/>
+    </g>
+    <g id="art-run" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M10 58c17-39 31 28 49-9s29 10 43-22"/><circle cx="10" cy="58" r="4"/><circle cx="59" cy="49" r="4"/><circle cx="102" cy="27" r="4"/><path d="m92 25 10 2-4 9M20 72h78M26 68v8M44 68v8M62 68v8M80 68v8"/><circle cx="34" cy="44" r="2"/><circle cx="78" cy="38" r="2"/>
+    </g>
+    <g id="art-result" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M16 70V42h14v28M40 70V24h14v46M64 70V34h14v36M88 70V14h14v56M12 70h95"/><path d="m19 20 7 7 13-14M18 36h10M42 18h10M66 28h10M90 8h10"/><circle cx="23" cy="55" r="2"/><circle cx="71" cy="45" r="2"/>
+    </g>
+    <g id="art-settings" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M16 24h88M16 45h88M16 66h88"/><circle cx="38" cy="24" r="7"/><circle cx="78" cy="45" r="7"/><circle cx="52" cy="66" r="7"/><path d="M38 13v-5M78 34v-5M52 55v-5M24 78h70M28 82h42"/>
+    </g>
   </defs>
 </svg>
 
@@ -82,6 +123,10 @@
         <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><use href="#i-result"/></svg>
         <span>Result</span>
       </button>
+      <button data-screen="settings">
+        <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><use href="#i-settings"/></svg>
+        <span>Settings</span>
+      </button>
     </div>
 
     <div class="side-foot">
@@ -95,7 +140,10 @@
     </div>
   </nav>
 
-  <main id="main">
+  <main id="main" data-screen="library">
+    <svg class="screen-art" viewBox="0 0 120 90" aria-hidden="true" focusable="false">
+      <use href="#art-library"/>
+    </svg>
 
     <!-- ═══ Library ═══ -->
     <div class="screen" id="s-library">
@@ -138,7 +186,7 @@
 
       <section>
         <h2>Attack pattern</h2>
-        <div class="fields" style="grid-template-columns:minmax(0,1fr)">
+        <div class="fields single-field">
           <div class="field">
             <label for="f-pattern">the mechanic that makes noticing cost something</label>
             <select id="f-pattern" aria-describedby="pattern-why"></select>
@@ -149,7 +197,7 @@
 
       <section>
         <h2>Describe it</h2>
-        <label class="eyebrow" for="brief" style="margin-bottom:var(--s-2)">Brief</label>
+        <label class="eyebrow label-spaced" for="brief">Brief</label>
         <textarea class="brief" id="brief" spellcheck="false" aria-describedby="brief-help"
           placeholder="A maintainer's pull-request assistant can merge and change the default branch. Someone with a lookalike account opens a release PR from their own fork."></textarea>
         <p class="hint" id="brief-help">The tags are hard constraints; the brief is the creative seed.</p>
@@ -167,11 +215,11 @@
         <div class="status-line" id="val-status" role="status" aria-live="polite"></div>
         <div class="editor-wrap">
           <div>
-            <label class="eyebrow" for="editor" style="margin-bottom:var(--s-2)">YAML</label>
+            <label class="eyebrow label-spaced" for="editor">YAML</label>
             <textarea class="editor" id="editor" spellcheck="false" aria-describedby="findings-help"></textarea>
           </div>
           <div>
-            <p class="eyebrow" id="findings-help" style="margin-bottom:var(--s-2)">Findings · select one to jump to its line</p>
+            <p class="eyebrow label-spaced" id="findings-help">Findings · select one to jump to its line</p>
             <div class="findings" id="findings"></div>
             <div class="actions">
               <button class="btn" id="btn-run">
@@ -185,7 +233,7 @@
                  two that happen to share a format. -->
             <p class="file-line" id="file-line" role="status" aria-live="polite"></p>
             <p class="hint mono" id="run-hint"></p>
-            <div class="fields" style="grid-template-columns:1fr 1fr;margin-top:var(--s-3)">
+            <div class="fields compact-fields">
               <div class="field">
                 <label for="f-repeats">repeats</label>
                 <input id="f-repeats" type="number" min="1" max="50" value="3" inputmode="numeric">
@@ -203,12 +251,33 @@
 
     <!-- ═══ Run ═══ -->
     <div class="screen" id="s-run" hidden>
-      <span class="eyebrow" id="run-eyebrow">Run</span>
-      <h1 id="run-title">Nothing running</h1>
-      <div class="meta" id="run-meta"></div>
-      <div id="run-body">
+      <div class="run-chrome">
+        <header class="run-header">
+          <div class="run-heading">
+            <span class="eyebrow" id="run-eyebrow">Run</span>
+            <h1 id="run-title">Nothing running</h1>
+            <div class="meta" id="run-meta"></div>
+          </div>
+          <div class="run-toolbar" aria-label="Run navigation">
+            <button class="btn ghost" id="run-latest" type="button" disabled>Latest</button>
+            <button class="btn ghost" id="run-past" type="button">Past runs</button>
+            <button class="btn" id="run-results" type="button" disabled>Results</button>
+          </div>
+        </header>
+        <div class="run-status" id="run-status"></div>
+      </div>
+      <div id="run-body" class="run-viewport" tabindex="0" role="region" aria-label="Run trajectory">
         <p class="empty">Start a run from the Library or the New screen.</p>
       </div>
+      <section class="run-history" id="run-history-section" aria-labelledby="run-history-title">
+        <div class="section-head">
+          <div>
+            <h2 id="run-history-title">Past runs</h2>
+            <p class="hint">Durable trajectories saved on this machine.</p>
+          </div>
+        </div>
+        <div id="run-history" aria-live="polite"></div>
+      </section>
     </div>
 
     <!-- ═══ Result ═══ -->
@@ -220,9 +289,54 @@
       </div>
     </div>
 
+    <!-- ═══ Settings ═══ -->
+    <div class="screen" id="s-settings" hidden>
+      <span class="eyebrow">Settings</span>
+      <h1>Choose how Crucible runs</h1>
+
+      <section>
+        <h2>Model roles</h2>
+        <p class="hint settings-intro">These preferences stay in this browser and are sent with generation and run requests. They do not change the server for other users.</p>
+        <div class="fields settings-fields">
+          <div class="field">
+            <label for="setting-target">tested model</label>
+            <select id="setting-target"></select>
+            <p class="hint">The agent model evaluated by a run.</p>
+          </div>
+          <div class="field">
+            <label for="setting-judge">judge model</label>
+            <select id="setting-judge"></select>
+            <p class="hint">Grades rubric items after the trajectory.</p>
+          </div>
+          <div class="field">
+            <label for="setting-generator">generator model</label>
+            <select id="setting-generator"></select>
+            <p class="hint">Drafts and critiques new scenarios.</p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Execution deadline</h2>
+        <div class="fields settings-fields">
+          <div class="field">
+            <label for="setting-timeout">run timeout · seconds</label>
+            <input id="setting-timeout" type="number" min="-1" step="0.1" value="-1" inputmode="decimal" aria-describedby="setting-timeout-help">
+            <p class="hint" id="setting-timeout-help">Use −1 to wait until each repeat finishes. A positive value stops that repeat and records an inconclusive partial result.</p>
+          </div>
+        </div>
+        <div class="actions settings-actions">
+          <button class="btn" id="settings-save">Save preferences</button>
+          <button class="btn ghost" id="settings-reset">Reset to server defaults</button>
+        </div>
+        <p class="status-line settings-status" id="settings-status" role="status" aria-live="polite"></p>
+      </section>
+    </div>
+
   </main>
 </div>
 
+<script src="/static/vendor/marked.min.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>
